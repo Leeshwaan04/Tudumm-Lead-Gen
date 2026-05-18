@@ -100,42 +100,6 @@ const stageColors = ['violet', 'blue', 'green', 'yellow', 'orange', 'pink']
 
 const stageIcons: React.ElementType[] = [Target, TrendingUp, Mail, Brain, MessageSquare, Share2, MapPin, Star, Phone, Users, Play, CheckCircle]
 
-// ─── Hardcoded playbooks (shown if API returns empty) ────────────────────────
-
-const DEFAULT_PLAYBOOKS: Playbook[] = [
-  {
-    id: 'b2b',
-    name: 'B2B Decision Maker Pipeline',
-    category: 'B2B',
-    platform: 'LinkedIn',
-    description: 'Identify, enrich, qualify, and outreach to decision makers via LinkedIn + Email.',
-    workflowId: undefined,
-    stages: [
-      { name: 'Identification', detail: 'Export leads from LinkedIn Sales Navigator by Job Title & Industry', actorName: 'LinkedIn Sales Nav Scraper', estimatedOutput: '2,500 raw leads', color: 'violet', tag: 'PhantomBuster Logic' },
-      { name: 'Intent Signal',  detail: 'Find companies hiring for roles that signal they need your product', actorName: 'Job Board Monitor', estimatedOutput: 'Intent-tagged companies', color: 'blue', tag: 'Apify Logic' },
-      { name: 'Enrichment',     detail: 'Find verified business email + direct dial phone number', actorName: 'Email & Phone Finder', estimatedOutput: '~65% email match rate', color: 'green', tag: 'AI Enrichment' },
-      { name: 'Qualification',  detail: "AI summarizes company's recent funding news and press releases", actorName: 'Company Intelligence Actor', estimatedOutput: 'AI qualification score', color: 'yellow', tag: 'LLM Analysis' },
-      { name: 'Outreach',       detail: 'Automated LinkedIn connection + 3-step message sequence', actorName: 'LinkedIn Outreach Sequence', estimatedOutput: '~30% acceptance rate', color: 'orange', tag: 'Browser Service' },
-      { name: 'Closure',        detail: 'Sync interested replies directly into HubSpot or Salesforce', actorName: 'CRM Sync Integration', estimatedOutput: 'Qualified pipeline', color: 'pink', tag: 'CRM Webhooks' },
-    ],
-  },
-  {
-    id: 'b2c',
-    name: 'B2C Mass Market Pipeline',
-    category: 'B2C',
-    platform: 'Social',
-    description: 'Scrape competitor audiences, extract contacts, and deploy mass outreach campaigns.',
-    workflowId: undefined,
-    stages: [
-      { name: 'Influencer Audience', detail: 'Scrape followers of competitor Instagram & TikTok accounts', actorName: 'Instagram / TikTok Scraper', estimatedOutput: '50K–500K profiles', color: 'pink', tag: 'Apify Logic' },
-      { name: 'Geofencing',          detail: 'Scrape users who reviewed similar businesses near target locations', actorName: 'Google Maps Review Extractor', estimatedOutput: 'Location-qualified buyers', color: 'blue', tag: 'Google Maps Scraper' },
-      { name: 'Sentiment Mining',    detail: 'Find dissatisfied competitor customers via review scraping', actorName: 'Review Sentiment Analyzer', estimatedOutput: 'Pain-point-tagged prospects', color: 'yellow', tag: 'Bright Data Logic' },
-      { name: 'Contact Discovery',   detail: 'Extract public emails from Instagram bio or Facebook Page', actorName: 'Social Contact Extractor', estimatedOutput: '~40% contact match', color: 'green', tag: 'Stealth Browser' },
-      { name: 'Retargeting',         detail: 'Upload email list to Facebook/Instagram as Custom Audience', actorName: 'Meta Ads Sync', estimatedOutput: 'Custom + Lookalike audiences', color: 'violet', tag: 'Marketing Integration' },
-      { name: 'Mass Outreach',       detail: 'Automated WhatsApp or SMS campaigns to phone numbers', actorName: 'WhatsApp / SMS Campaign', estimatedOutput: 'Campaign delivered', color: 'orange', tag: 'Communication API' },
-    ],
-  },
-]
 
 // ─── Playbook Detail ──────────────────────────────────────────────────────────
 
@@ -177,9 +141,13 @@ function PlaybookDetail({ playbook, onClose }: { playbook: Playbook; onClose: ()
     setRunning(false)
   }
 
+  const [addedToWorkflow, setAddedToWorkflow] = useState(false)
+
   async function addToWorkflow(wf: Workflow) {
     setShowWorkflowSelector(false)
-    showToast(`Stages added to "${wf.name}".`)
+    showToast(`Added to workflow queue: "${wf.name}"`)
+    setAddedToWorkflow(true)
+    setTimeout(() => setAddedToWorkflow(false), 3000)
   }
 
   const stage = playbook.stages[activeStage]
@@ -199,9 +167,10 @@ function PlaybookDetail({ playbook, onClose }: { playbook: Playbook; onClose: ()
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowWorkflowSelector(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 border border-white/10 hover:bg-white/5 rounded-lg text-sm transition-colors"
+            className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-sm transition-colors ${addedToWorkflow ? 'border-green-500/40 bg-green-500/10 text-green-400' : 'border-white/10 hover:bg-white/5'}`}
           >
-            <Plus className="h-3.5 w-3.5" />Add to Workflow
+            {addedToWorkflow ? <CheckCircle className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+            {addedToWorkflow ? 'Added to Queue' : 'Add to Workflow'}
           </button>
           <button
             onClick={runFullPlaybook}
@@ -333,21 +302,29 @@ function PlaybookCard({ playbook, onExpand }: { playbook: Playbook; onExpand: ()
 export default function PlaybooksPage() {
   const [playbooks, setPlaybooks] = useState<Playbook[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/playbooks')
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`Server error ${r.status}`)
+        return r.json()
+      })
       .then(data => {
-        const list = Array.isArray(data) && data.length > 0 ? data : DEFAULT_PLAYBOOKS
+        const list = Array.isArray(data) ? data : []
         setPlaybooks(list.map((p: Record<string, unknown>) => ({
           ...p,
           stages: Array.isArray(p.stages)
             ? p.stages
             : (() => { try { return JSON.parse(p.stages as string ?? '[]') } catch { return [] } })(),
         })) as Playbook[])
+        setError(null)
       })
-      .catch(() => setPlaybooks(DEFAULT_PLAYBOOKS))
+      .catch((err: unknown) => {
+        setError(err instanceof Error ? err.message : 'Failed to load playbooks.')
+        setPlaybooks([])
+      })
       .finally(() => setLoading(false))
   }, [])
 
@@ -355,6 +332,24 @@ export default function PlaybooksPage() {
 
   if (loading) {
     return <div className="flex-1 flex items-center justify-center"><RefreshCw className="h-8 w-8 animate-spin text-violet-400" /></div>
+  }
+
+  if (error) {
+    return (
+      <div className="p-6 max-w-6xl mx-auto">
+        <div className="flex flex-col items-center justify-center py-20 border border-red-500/20 rounded-2xl bg-red-500/5 text-center space-y-3">
+          <Building2 className="h-10 w-10 text-red-400/50" />
+          <p className="text-red-400 text-sm font-medium">Failed to load playbooks</p>
+          <p className="text-white/30 text-xs">{error}</p>
+          <button
+            onClick={() => { setError(null); setLoading(true); fetch('/api/playbooks').then(r => r.json()).then(data => { setPlaybooks(Array.isArray(data) ? data : []); setLoading(false) }).catch(() => { setError('Failed to load playbooks.'); setLoading(false) }) }}
+            className="mt-2 flex items-center gap-1.5 px-4 py-2 border border-white/10 hover:bg-white/5 rounded-lg text-sm transition-colors"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />Try again
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -376,7 +371,7 @@ export default function PlaybooksPage() {
       )}
 
       {/* Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
         {playbooks.filter(p => p.id !== selectedId).map(pb => (
           <PlaybookCard key={pb.id} playbook={pb} onExpand={() => setSelectedId(pb.id)} />
         ))}
@@ -385,7 +380,7 @@ export default function PlaybooksPage() {
       {playbooks.length === 0 && (
         <div className="text-center py-16 text-white/30 text-sm border border-white/10 rounded-2xl">
           <Building2 className="h-10 w-10 mx-auto mb-3 opacity-30" />
-          No playbooks yet.
+          No playbooks yet. Check back soon.
         </div>
       )}
     </div>

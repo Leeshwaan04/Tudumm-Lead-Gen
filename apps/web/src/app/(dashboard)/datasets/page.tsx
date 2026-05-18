@@ -56,6 +56,8 @@ export default function DatasetsPage() {
   const [toast, setToast] = useState<string | null>(null)
   const [exporting, setExporting] = useState<string | null>(null)
   const [importing, setImporting] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   function showToast(msg: string) {
     setToast(msg)
@@ -77,7 +79,10 @@ export default function DatasetsPage() {
       }))
       setDatasets(list)
       if (list.length > 0 && !selectedId) setSelectedId(list[0]?.id ?? null)
-    } catch { setDatasets([]) }
+    } catch (err: unknown) {
+      setDatasets([])
+      showToast(err instanceof Error ? err.message : 'Failed to load datasets.')
+    }
     setLoading(false)
   }, [selectedId])
 
@@ -102,7 +107,10 @@ export default function DatasetsPage() {
           items,
         })
       })
-      .catch(() => setDetail(null))
+      .catch((err: unknown) => {
+        setDetail(null)
+        showToast(err instanceof Error ? err.message : 'Failed to load dataset details.')
+      })
       .finally(() => setDetailLoading(false))
   }, [selectedId])
 
@@ -132,6 +140,27 @@ export default function DatasetsPage() {
     setExporting(null)
   }
 
+  async function deleteDataset() {
+    if (!selectedId) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/datasets/${selectedId}`, { method: 'DELETE' })
+      if (res.status === 405) {
+        showToast('Dataset deletion not supported yet.')
+      } else if (!res.ok) {
+        showToast(`Delete failed (${res.status}).`)
+      } else {
+        showToast('Dataset deleted.')
+        setSelectedId(null)
+        setDetail(null)
+        await fetchDatasets()
+      }
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Delete failed.')
+    }
+    setDeleting(false)
+  }
+
   async function pushToLeads() {
     if (!selectedId) return
     setImporting(true)
@@ -156,13 +185,33 @@ export default function DatasetsPage() {
   }
 
   return (
-    <div className="flex flex-1 min-h-0">
+    <div className="flex flex-1 min-h-0 relative">
       {toast && (
         <div className="fixed bottom-6 right-6 z-50 px-4 py-2 bg-violet-600 text-white text-sm rounded-xl shadow-xl">{toast}</div>
       )}
 
+      {/* Mobile sidebar toggle */}
+      <button
+        onClick={() => setSidebarOpen(o => !o)}
+        className="sm:hidden fixed top-4 left-4 z-40 p-2 bg-[#09090b] border border-white/10 rounded-lg"
+      >
+        <Database className="h-4 w-4 text-white/60" />
+      </button>
+
+      {/* Mobile overlay */}
+      {sidebarOpen && (
+        <div className="sm:hidden fixed inset-0 z-30 bg-black/60" onClick={() => setSidebarOpen(false)} />
+      )}
+
       {/* Left sidebar */}
-      <div className="w-72 shrink-0 border-r border-white/10 flex flex-col">
+      <div className={`
+        shrink-0 border-r border-white/10 flex flex-col
+        fixed sm:relative inset-y-0 left-0 z-40
+        w-full sm:w-72
+        transition-transform duration-200
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full sm:translate-x-0'}
+        bg-[#09090b] sm:bg-transparent
+      `}>
         <div className="p-4 border-b border-white/10 space-y-3">
           <div className="flex items-center justify-between">
             <h1 className="text-lg font-semibold">Datasets</h1>
@@ -239,10 +288,12 @@ export default function DatasetsPage() {
                 Push to Leads
               </button>
               <button
-                onClick={() => showToast('Delete coming soon.')}
-                className="flex items-center gap-1.5 px-3 py-2 border border-white/10 hover:bg-white/5 rounded-lg text-sm transition-colors text-red-400"
+                onClick={deleteDataset}
+                disabled={deleting}
+                className="flex items-center gap-1.5 px-3 py-2 border border-white/10 hover:bg-red-500/10 hover:border-red-500/30 rounded-lg text-sm transition-colors text-red-400 disabled:opacity-50"
               >
-                <Trash2 className="h-3.5 w-3.5" />Delete
+                {deleting ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                Delete
               </button>
               <div className="flex border border-white/10 rounded-lg overflow-hidden">
                 {[
@@ -284,7 +335,9 @@ export default function DatasetsPage() {
                   <tr>
                     <th className="text-left px-4 py-3 text-white/40 font-medium text-xs uppercase tracking-wider w-8">#</th>
                     {cols.map(col => (
-                      <th key={col} className="text-left px-4 py-3 text-white/40 font-medium text-xs uppercase tracking-wider">{col}</th>
+                      <th key={col} className="text-left px-4 py-3 text-white/40 font-medium text-xs uppercase tracking-wider max-w-[200px]">
+                        <span className="block truncate">{col}</span>
+                      </th>
                     ))}
                   </tr>
                 </thead>

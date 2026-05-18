@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Linkedin, Shield, Cookie, Play, RefreshCw, AlertTriangle, CheckCircle,
-  Clock, Users, MessageSquare, UserPlus, Search, Zap, Loader2, Trash2, X, Plus,
+  Clock, Users, MessageSquare, UserPlus, Search, Zap, Loader2, Trash2, X, Plus, CreditCard,
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -51,6 +51,8 @@ export default function LinkedInPage() {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [refreshingId, setRefreshingId] = useState<string | null>(null)
+  const [toastMsg, setToastMsg] = useState<string | null>(null)
+  function showToast(msg: string) { setToastMsg(msg); setTimeout(() => setToastMsg(null), 3500) }
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [runningId, setRunningId] = useState<string | null>(null)
 
@@ -132,6 +134,7 @@ export default function LinkedInPage() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6 overflow-y-auto">
+      {toastMsg && <div className="fixed bottom-6 right-6 z-50 px-4 py-2 bg-violet-600 text-white text-sm rounded-xl shadow-xl">{toastMsg}</div>}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-xl bg-[#0077B5]/20 border border-[#0077B5]/30 flex items-center justify-center">
@@ -184,7 +187,7 @@ export default function LinkedInPage() {
               rows={3}
               value={sessionCookie}
               onChange={e => setSessionCookie(e.target.value)}
-              placeholder="Paste your LinkedIn li_at cookie here..."
+              placeholder="Paste your li_at cookie value here…"
               className="w-full px-3 py-2 text-sm font-mono bg-white/5 border border-white/10 rounded-lg outline-none focus:border-[#0077B5] resize-none text-white"
             />
             <p className="text-xs text-white/30 mt-1">DevTools → Application → Cookies → linkedin.com → li_at</p>
@@ -212,7 +215,7 @@ export default function LinkedInPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
         {/* Session list */}
         <div className="space-y-3">
           <h2 className="text-sm font-medium text-white/60 uppercase tracking-wider">Sessions</h2>
@@ -308,10 +311,11 @@ export default function LinkedInPage() {
               </div>
 
               <div className="border border-white/10 rounded-xl p-5">
-                <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center gap-2 mb-1">
                   <Shield className="h-4 w-4 text-green-400" />
-                  <h3 className="font-medium">Safety Guardrails Active</h3>
+                  <h3 className="font-medium">Platform Guidelines</h3>
                 </div>
+                <p className="text-xs text-white/30 mb-3">These are LinkedIn's recommended usage limits and safety practices. Tudumm enforces them automatically.</p>
                 <div className="grid grid-cols-2 gap-2">
                   {safetyRules.map(rule => (
                     <div key={rule} className="flex items-center gap-2 text-xs text-white/50">
@@ -332,8 +336,16 @@ export default function LinkedInPage() {
 
       {/* LinkedIn Phantoms */}
       <div>
-        <h2 className="text-lg font-medium mb-4">LinkedIn Phantoms</h2>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-medium">LinkedIn Phantoms</h2>
+          <button
+            onClick={() => showToast('Credit purchase coming soon')}
+            className="flex items-center gap-2 px-3 py-1.5 border border-white/10 rounded-lg text-xs text-white/60 hover:bg-white/5 transition-colors"
+          >
+            <CreditCard className="h-3.5 w-3.5" /> Purchase Credits
+          </button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {phantomDefs.map(ph => {
             const Icon = ph.icon
             return (

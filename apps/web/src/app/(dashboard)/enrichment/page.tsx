@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Upload, Zap, CheckCircle, XCircle, Clock, Mail, Phone, Brain,
@@ -76,12 +76,15 @@ function SequenceModal({ leadIds, onClose }: { leadIds: string[]; onClose: () =>
 export default function EnrichmentPage() {
   const qc = useQueryClient()
   const fileRef = useRef<HTMLInputElement>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [selected, setSelected] = useState<Lead | null>(null)
   const [enrichingAll, setEnrichingAll] = useState(false)
   const [enrichingId, setEnrichingId] = useState<string | null>(null)
   const [enrichProgress, setEnrichProgress] = useState(0)
   const [importing, setImporting] = useState(false)
   const [showSeqModal, setShowSeqModal] = useState(false)
+  const [toastMsg, setToastMsg] = useState<string | null>(null)
+  function showToast(msg: string) { setToastMsg(msg); setTimeout(() => setToastMsg(null), 3500) }
 
   const { data: leadsRaw = [], isLoading } = useQuery<Lead[]>({
     queryKey: ['enrich-leads'],
@@ -96,50 +99,89 @@ export default function EnrichmentPage() {
     const file = e.target.files?.[0]
     if (!file) return
     setImporting(true)
-    const fd = new FormData(); fd.append('file', file)
-    await fetch('/api/leads/import', { method: 'POST', body: fd })
-    qc.invalidateQueries({ queryKey: ['enrich-leads'] })
-    setImporting(false)
-    if (fileRef.current) fileRef.current.value = ''
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const res = await fetch('/api/leads/import', { method: 'POST', body: fd })
+      if (!res.ok) throw new Error('Import failed')
+      qc.invalidateQueries({ queryKey: ['enrich-leads'] })
+    } catch (err: any) {
+      showToast(err?.message ?? 'Failed to import CSV')
+    } finally {
+      setImporting(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
   }
 
   async function enrichAll() {
     if (leadsRaw.length === 0) return
     setEnrichingAll(true); setEnrichProgress(0)
     const ids = leadsRaw.map(l => l.id)
-    // Fake progress ticks while waiting
-    const interval = setInterval(() => setEnrichProgress(p => Math.min(p + 5, 90)), 400)
     try {
-      await fetch('/api/enrichment', {
+      const res = await fetch('/api/enrichment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ leadIds: ids }),
       })
+      if (!res.ok) throw new Error('Enrichment request failed')
+
+      // Poll /api/enrichment every 2 s for real progress
+      pollRef.current = setInterval(async () => {
+        try {
+          const poll = await fetch('/api/enrichment')
+          if (poll.ok) {
+            const data = await poll.json()
+            const pct = typeof data?.progress === 'number' ? data.progress : null
+            if (pct !== null) setEnrichProgress(Math.min(pct, 99))
+            if (data?.done || pct === 100) {
+              if (pollRef.current) clearInterval(pollRef.current)
+              setEnrichProgress(100)
+              qc.invalidateQueries({ queryKey: ['enrich-leads'] })
+              setTimeout(() => { setEnrichingAll(false); setEnrichProgress(0) }, 800)
+            }
+          }
+        } catch { /* polling errors are non-fatal */ }
+      }, 2000)
+
+      // Fallback: if API doesn't support progress polling, finish after response
       qc.invalidateQueries({ queryKey: ['enrich-leads'] })
-    } finally {
-      clearInterval(interval)
+      if (pollRef.current) clearInterval(pollRef.current)
       setEnrichProgress(100)
       setTimeout(() => { setEnrichingAll(false); setEnrichProgress(0) }, 800)
+    } catch (err: any) {
+      if (pollRef.current) clearInterval(pollRef.current)
+      setEnrichingAll(false); setEnrichProgress(0)
+      showToast(err?.message ?? 'Enrichment failed')
     }
   }
 
   async function enrichOne(leadId: string) {
     setEnrichingId(leadId)
-    await fetch('/api/enrichment', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ leadIds: [leadId] }),
-    })
-    qc.invalidateQueries({ queryKey: ['enrich-leads'] })
-    setEnrichingId(null)
+    try {
+      const res = await fetch('/api/enrichment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadIds: [leadId] }),
+      })
+      if (!res.ok) throw new Error('Enrichment failed')
+      qc.invalidateQueries({ queryKey: ['enrich-leads'] })
+    } catch (err: any) {
+      showToast(err?.message ?? 'Failed to enrich lead')
+    } finally {
+      setEnrichingId(null)
+    }
   }
 
   async function exportCSV() {
-    const res = await fetch('/api/leads/export?format=csv')
-    const blob = await res.blob()
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a'); a.href = url; a.download = 'enriched-leads.csv'; a.click()
-    URL.revokeObjectURL(url)
+    try {
+      const res = await fetch('/api/leads/export?format=csv')
+      if (!res.ok) throw new Error('Export failed')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a'); a.href = url; a.download = 'enriched-leads.csv'; a.click()
+      URL.revokeObjectURL(url)
+    } catch (err: any) {
+      showToast(err?.message ?? 'Failed to export CSV')
+    }
   }
 
   const displayLead = selected ?? leadsRaw[0] ?? null
@@ -149,9 +191,9 @@ export default function EnrichmentPage() {
       {showSeqModal && displayLead && <SequenceModal leadIds={[displayLead.id]} onClose={() => setShowSeqModal(false)} />}
       <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={importCSV} />
 
-      <div className="flex flex-1 min-h-0 gap-0">
+      <div className="flex flex-1 min-h-0 gap-0 flex-col sm:flex-row">
         {/* ── Left: lead list ──────────────────────────────────────────────── */}
-        <div className="w-80 shrink-0 border-r border-white/10 flex flex-col">
+        <div className="w-full sm:w-80 shrink-0 border-b sm:border-b-0 sm:border-r border-white/10 flex flex-col">
           <div className="p-4 border-b border-white/10 space-y-3">
             <div className="flex items-center justify-between">
               <h1 className="text-lg font-semibold">Enrichment</h1>
@@ -297,15 +339,9 @@ export default function EnrichmentPage() {
                     ))}
                   </div>
                 )}
-                {!displayLead.enrichResult?.waterfall && (
-                  <div className="mt-3 pt-3 border-t border-white/5 space-y-1.5">
-                    <p className="text-xs text-white/30 mb-2">Data providers:</p>
-                    {['Hunter.io', 'Apollo.io', 'Snov.io', 'SMTP Verify'].map(name => (
-                      <div key={name} className="flex items-center gap-2">
-                        {displayLead.email ? <CheckCircle className="h-3 w-3 text-green-400" /> : <XCircle className="h-3 w-3 text-white/20" />}
-                        <span className="text-xs text-white/50">{name}</span>
-                      </div>
-                    ))}
+                {!displayLead.enrichResult?.waterfall && displayLead.enrichResult && (
+                  <div className="mt-3 pt-3 border-t border-white/5">
+                    <p className="text-xs text-white/30">No provider waterfall data available.</p>
                   </div>
                 )}
               </div>
@@ -320,15 +356,21 @@ export default function EnrichmentPage() {
                   : <p className="text-sm text-white/30 mb-2">Not found</p>
                 }
                 {statusBadge(displayLead.phone ? 'VERIFIED' : null)}
-                <div className="mt-3 pt-3 border-t border-white/5 space-y-1.5">
-                  <p className="text-xs text-white/30 mb-2">Sources checked:</p>
-                  {['ZoomInfo', 'Apollo DB', 'LinkedIn profile', 'Company website'].map(src => (
-                    <div key={src} className="flex items-center gap-2">
-                      {displayLead.phone ? <CheckCircle className="h-3 w-3 text-green-400" /> : <XCircle className="h-3 w-3 text-white/20" />}
-                      <span className="text-xs text-white/50">{src}</span>
-                    </div>
-                  ))}
-                </div>
+                {displayLead.enrichResult?.phoneSources ? (
+                  <div className="mt-3 pt-3 border-t border-white/5 space-y-1.5">
+                    <p className="text-xs text-white/30 mb-2">Sources checked:</p>
+                    {displayLead.enrichResult.phoneSources.map((src: string) => (
+                      <div key={src} className="flex items-center gap-2">
+                        {displayLead.phone ? <CheckCircle className="h-3 w-3 text-green-400" /> : <XCircle className="h-3 w-3 text-white/20" />}
+                        <span className="text-xs text-white/50">{src}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : displayLead.enrichResult ? (
+                  <div className="mt-3 pt-3 border-t border-white/5">
+                    <p className="text-xs text-white/30">No phone source data available.</p>
+                  </div>
+                ) : null}
               </div>
             </div>
 

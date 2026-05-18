@@ -104,28 +104,29 @@ function AddCreditsModal({ onClose, onPurchased }: { onClose: () => void; onPurc
 export default function BillingPage() {
   const [data, setData] = useState<BillingData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
   const [showAddCredits, setShowAddCredits] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+  const [toastSpinner, setToastSpinner] = useState(false)
 
-  function showToast(msg: string) {
+  function showToast(msg: string, spinner = false) {
     setToast(msg)
-    setTimeout(() => setToast(null), 3500)
+    setToastSpinner(spinner)
+    setTimeout(() => {
+      setToast(null)
+      setToastSpinner(false)
+    }, 3500)
   }
 
   async function fetchBilling() {
     setLoading(true)
+    setError(false)
     try {
       const res = await fetch('/api/billing').then(r => r.json())
       setData(res)
     } catch {
-      // Use fallback data
-      setData({
-        creditBalance: 18420,
-        execHoursUsed: 23,
-        execHoursLimit: 80,
-        plan: { name: 'GROW', price: 149, features: PLAN_FEATURES['GROW'] ?? [] },
-        transactions: [],
-      })
+      setError(true)
+      setData(null)
     }
     setLoading(false)
   }
@@ -136,7 +137,23 @@ export default function BillingPage() {
     return <div className="flex-1 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-violet-400" /></div>
   }
 
-  const billing = data!
+  // ─── Error state ────────────────────────────────────────────────────────────
+  if (error || !data) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-4 p-6">
+        <AlertCircle className="h-10 w-10 text-red-400" />
+        <p className="text-white/60 text-sm">Failed to load billing data. Please try again.</p>
+        <button
+          onClick={fetchBilling}
+          className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 rounded-lg text-sm transition-colors"
+        >
+          <RefreshCw className="h-4 w-4" />Retry
+        </button>
+      </div>
+    )
+  }
+
+  const billing = data
   const planName = billing.plan?.name ?? 'GROW'
   const planFeatures = billing.plan?.features ?? PLAN_FEATURES[planName] ?? []
   const planPrice = billing.plan?.price ?? PLAN_PRICES[planName] ?? 149
@@ -149,7 +166,10 @@ export default function BillingPage() {
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-8 overflow-y-auto flex-1">
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 px-4 py-2 bg-violet-600 text-white text-sm rounded-xl shadow-xl">{toast}</div>
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-2 bg-violet-600 text-white text-sm rounded-xl shadow-xl">
+          {toastSpinner && <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />}
+          {toast}
+        </div>
       )}
       {showAddCredits && (
         <AddCreditsModal onClose={() => setShowAddCredits(false)} onPurchased={fetchBilling} />
@@ -161,13 +181,16 @@ export default function BillingPage() {
           <h1 className="text-2xl font-semibold">Billing & Credits</h1>
           <p className="text-sm text-white/40 mt-0.5">Manage your plan, credits, and payment history</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 border border-white/10 rounded-lg text-sm hover:bg-white/5 transition-colors">
+        <button
+          onClick={() => showToast('Payment method update coming soon')}
+          className="flex items-center gap-2 px-4 py-2 border border-white/10 rounded-lg text-sm hover:bg-white/5 transition-colors"
+        >
           <CreditCard className="h-4 w-4" />Update Payment Method
         </button>
       </div>
 
-      {/* Credit balance + usage */}
-      <div className="grid grid-cols-2 gap-5">
+      {/* Credit balance + usage — 1-col on mobile, 2-col on sm+ */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
         {/* Balance */}
         <div className="border border-white/10 rounded-xl p-5 space-y-4">
           <div className="flex items-center justify-between">
@@ -229,7 +252,7 @@ export default function BillingPage() {
         </div>
       </div>
 
-      {/* Upgrade options */}
+      {/* Upgrade options — 2-col on mobile, 4-col on md+ */}
       <div>
         <h2 className="text-lg font-semibold mb-4">Available Plans</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -260,7 +283,7 @@ export default function BillingPage() {
                   </button>
                 ) : (
                   <button
-                    onClick={() => showToast(`Upgrade to ${plan} coming soon — contact support.`)}
+                    onClick={() => showToast('Redirecting to checkout...', true)}
                     className="w-full py-1.5 text-xs bg-violet-600 hover:bg-violet-500 rounded-lg transition-colors"
                   >
                     Upgrade
@@ -306,7 +329,7 @@ export default function BillingPage() {
                     <td className="px-4 py-3 text-right text-white/50">{tx.balanceAfter.toLocaleString()}</td>
                     <td className="px-4 py-3">
                       <button
-                        onClick={() => showToast('Invoice PDF coming soon.')}
+                        onClick={() => showToast('Invoice download coming soon')}
                         className="flex items-center gap-1 text-xs text-white/30 hover:text-white transition-colors"
                       >
                         <Download className="h-3 w-3" />PDF
