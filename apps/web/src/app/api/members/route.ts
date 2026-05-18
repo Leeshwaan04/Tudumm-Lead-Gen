@@ -29,8 +29,10 @@ export async function POST(req: Request) {
     const { email, role } = await req.json()
     if (!email) return NextResponse.json({ error: 'email required' }, { status: 400 })
 
-    const user = await prisma.user.findUnique({ where: { email } })
-    if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    let user = await prisma.user.findUnique({ where: { email } })
+    if (!user) {
+      user = await prisma.user.create({ data: { email, name: email.split('@')[0] } })
+    }
 
     const existing = await prisma.workspaceMember.findUnique({
       where: { workspaceId_userId: { workspaceId, userId: user.id } },

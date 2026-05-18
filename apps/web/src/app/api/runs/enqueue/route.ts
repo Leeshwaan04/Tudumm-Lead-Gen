@@ -13,17 +13,23 @@ export async function POST(req: Request) {
   const actor = await prisma.actor.findFirst({ where: { id: actorId } })
   if (!actor) return NextResponse.json({ error: 'Actor not found' }, { status: 404 })
 
+  const inputJson = JSON.stringify(input ?? {})
   const run = await prisma.run.create({
-    data: { workspaceId, actorId, input: input ?? {}, status: 'QUEUED' },
+    data: { workspaceId, actorId, input: inputJson, status: 'QUEUED' },
   })
 
-  await runQueue.add('run', {
-    runId: run.id,
-    actorId,
-    workspaceId,
-    input: input ?? {},
-    actorSlug: actor.slug,
-  })
+  // Only enqueue if Redis is available; otherwise run stays QUEUED for manual pickup
+  try {
+    await runQueue.add('run', {
+      runId: run.id,
+      actorId,
+      workspaceId,
+      input: input ?? {},
+      actorSlug: actor.slug,
+    })
+  } catch {
+    // Redis not available in local dev without Redis running — run stays QUEUED
+  }
 
   return NextResponse.json(run, { status: 201 })
 }

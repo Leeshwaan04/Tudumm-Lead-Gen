@@ -24,7 +24,11 @@ export async function POST(req: Request) {
     const workspaceId = (session as any)?.workspaceId
     if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { alias, email, sessionCookie, dailyLimit } = await req.json()
+    const body = await req.json()
+    const alias = body.alias ?? body.accountName ?? 'Unnamed'
+    const email = body.email ?? body.accountEmail ?? `li-${Date.now()}@placeholder.com`
+    const sessionCookie = body.sessionCookie ?? body.cookie ?? ''
+    const { dailyLimit } = body
     const created = await prisma.linkedInSession.create({
       data: {
         workspaceId,

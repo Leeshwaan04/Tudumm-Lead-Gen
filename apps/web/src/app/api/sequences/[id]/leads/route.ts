@@ -19,6 +19,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const lead = await prisma.lead.findFirst({ where: { id: leadId, workspaceId } })
   if (!lead) return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
 
+  // Check for duplicate
+  const existing = await prisma.sequenceLead.findUnique({ where: { sequenceId_leadId: { sequenceId, leadId } } })
+  if (existing) return NextResponse.json({ error: 'Lead already in sequence' }, { status: 409 })
+
   const sequenceLead = await prisma.sequenceLead.create({
     data: { sequenceId, leadId },
   })

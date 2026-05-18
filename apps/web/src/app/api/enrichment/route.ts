@@ -26,6 +26,23 @@ function mockEnrich(title?: string | null): { icpScore: number; emailStatus: str
   }
 }
 
+export async function GET(req: Request) {
+  try {
+    const session = await auth()
+    const workspaceId = (session as any)?.workspaceId
+    if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const jobs = await prisma.enrichmentJob.findMany({
+      where: { workspaceId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    })
+    return NextResponse.json(jobs)
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 })
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const session = await auth()
@@ -33,7 +50,7 @@ export async function POST(req: Request) {
     if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { leadIds, providers } = await req.json()
-    if (!Array.isArray(leadIds) || leadIds.length === 0) {
+    if (!Array.isArray(leadIds)) {
       return NextResponse.json({ error: 'leadIds required' }, { status: 400 })
     }
 

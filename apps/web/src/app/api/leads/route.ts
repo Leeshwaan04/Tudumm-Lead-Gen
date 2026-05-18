@@ -18,10 +18,11 @@ export async function GET(req: Request) {
   if (listId) where.listId = listId
   if (minScore) where.icpScore = { gte: parseInt(minScore, 10) }
   if (search) {
+    // SQLite does not support mode:'insensitive' — use plain contains (case-sensitive)
     where.OR = [
-      { fullName: { contains: search, mode: 'insensitive' } },
-      { email: { contains: search, mode: 'insensitive' } },
-      { company: { contains: search, mode: 'insensitive' } },
+      { fullName: { contains: search } },
+      { email: { contains: search } },
+      { company: { contains: search } },
     ]
   }
 
