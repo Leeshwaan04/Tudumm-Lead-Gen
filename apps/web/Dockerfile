@@ -1,36 +1,38 @@
 # ── Stage 1: Install dependencies ─────────────────────────────────────────────
+# Build context is the MONOREPO ROOT (not apps/web).
+# In deploy.yml: docker build -f apps/web/Dockerfile .
 FROM node:20-alpine AS deps
 
 RUN apk add --no-cache libc6-compat
+RUN corepack enable pnpm
 
 WORKDIR /app
 
-COPY package.json package-lock.json* yarn.lock* pnpm-lock.yaml* ./
-RUN \
-  if [ -f yarn.lock ]; then yarn --frozen-lockfile; \
-  elif [ -f package-lock.json ]; then npm ci; \
-  elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm i --frozen-lockfile; \
-  else echo "No lockfile found." && exit 1; \
-  fi
+# Copy monorepo manifests so pnpm can hoist deps correctly
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml* ./
+COPY apps/web/package.json ./apps/web/
+COPY packages/ ./packages/
+
+RUN pnpm install --frozen-lockfile --filter @tudumm/web...
 
 # ── Stage 2: Build the Next.js app ────────────────────────────────────────────
 FROM node:20-alpine AS builder
 
+RUN corepack enable pnpm
+
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
+
 COPY . .
 
-# next.config.js must have output: 'standalone' for this to work
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
-RUN \
-  if [ -f yarn.lock ]; then yarn build; \
-  elif [ -f package-lock.json ]; then npm run build; \
-  elif [ -f pnpm-lock.yaml ]; then corepack enable pnpm && pnpm build; \
-  else npm run build; \
-  fi
+# Generate Prisma client then build
+RUN cd apps/web && npx prisma generate
+RUN pnpm --filter @tudumm/web build
 
 # ── Stage 3: Production runner ────────────────────────────────────────────────
 FROM node:20-alpine AS runner
@@ -43,19 +45,17 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN addgroup --system --gid 1001 nodejs \
  && adduser  --system --uid 1001 nextjs
 
-# Copy standalone build output
-COPY --from=builder /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder /app/apps/web/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./.next/static
 
 USER nextjs
 
 EXPOSE 3000
-
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
-  CMD wget --spider -q http://localhost:3000/ || exit 1
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
+  CMD wget --spider -q http://localhost:3000/api/health || exit 1
 
 CMD ["node", "server.js"]

@@ -10,7 +10,26 @@ env:
   ECR_WORKER_REPO: tudumm-worker
 
 jobs:
+  # ── Guard job: exits early if AWS secrets are not wired up ────────────────
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.guard.outputs.ready }}
+    steps:
+      - id: guard
+        run: |
+          if [ -n "${{ secrets.AWS_DEPLOY_ROLE_ARN }}" ] && \
+             [ -n "${{ secrets.APPRUNNER_SERVICE_ARN }}" ] && \
+             [ -n "${{ secrets.DATABASE_URL }}" ]; then
+            echo "ready=true" >> $GITHUB_OUTPUT
+          else
+            echo "ready=false" >> $GITHUB_OUTPUT
+            echo "::warning::One or more AWS secrets are missing (AWS_DEPLOY_ROLE_ARN / APPRUNNER_SERVICE_ARN / DATABASE_URL). Skipping deploy."
+          fi
+
   deploy:
+    needs: check
+    if: needs.check.outputs.ready == 'true'
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -19,39 +38,80 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC)
+      # ── AWS Auth via OIDC (no long-lived keys) ───────────────────────────────
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to ECR
-        id: login-ecr
+        id: ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      # ── Web image (build context = monorepo root) ────────────────────────────
       - name: Build & push web image
         run: |
-          docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_WEB_REPO }}:${{ github.sha }} -f apps/web/Dockerfile apps/web
-          docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_WEB_REPO }}:${{ github.sha }}
-          docker tag ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_WEB_REPO }}:${{ github.sha }} ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_WEB_REPO }}:latest
-          docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_WEB_REPO }}:latest
+          IMG=${{ steps.ecr.outputs.registry }}/${{ env.ECR_WEB_REPO }}
+          docker build -t $IMG:${{ github.sha }} -t $IMG:latest \
+            -f apps/web/Dockerfile .
+          docker push $IMG:${{ github.sha }}
+          docker push $IMG:latest
 
+      # ── Worker image (build context = monorepo root) ─────────────────────────
       - name: Build & push worker image
         run: |
-          docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_WORKER_REPO }}:${{ github.sha }} -f apps/web/Dockerfile.worker apps/web
-          docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_WORKER_REPO }}:${{ github.sha }}
-          docker tag ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_WORKER_REPO }}:${{ github.sha }} ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_WORKER_REPO }}:latest
-          docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_WORKER_REPO }}:latest
+          IMG=${{ steps.ecr.outputs.registry }}/${{ env.ECR_WORKER_REPO }}
+          docker build -t $IMG:${{ github.sha }} -t $IMG:latest \
+            -f apps/web/Dockerfile.worker .
+          docker push $IMG:${{ github.sha }}
+          docker push $IMG:latest
 
-      - name: Deploy App Runner
-        run: |
-          aws apprunner start-deployment --service-arn ${{ secrets.APPRUNNER_SERVICE_ARN }}
+      # ── DB migrations (before flipping traffic) ──────────────────────────────
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
 
-      - name: Update ECS worker service
-        run: |
-          aws ecs update-service --cluster tudumm-workers --service tudumm-worker --force-new-deployment
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
 
       - name: Run DB migrations
+        working-directory: apps/web
+        run: npx prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      # ── App Runner: trigger new revision ─────────────────────────────────────
+      - name: Deploy App Runner
         run: |
-          cd apps/web
-          DATABASE_URL=${{ secrets.DATABASE_URL }} npx prisma migrate deploy
+          aws apprunner start-deployment \
+            --service-arn ${{ secrets.APPRUNNER_SERVICE_ARN }}
+
+      # ── Wait for App Runner healthy before rolling workers ───────────────────
+      - name: Wait for App Runner healthy
+        run: |
+          for i in $(seq 1 24); do
+            STATUS=$(aws apprunner describe-service \
+              --service-arn ${{ secrets.APPRUNNER_SERVICE_ARN }} \
+              --query 'Service.Status' --output text)
+            echo "  attempt $i: $STATUS"
+            [ "$STATUS" = "RUNNING" ] && { echo "Healthy."; break; }
+            [ $i -eq 24 ] && { echo "Timed out."; exit 1; }
+            sleep 15
+          done
+
+      # ── ECS worker: force new deployment ─────────────────────────────────────
+      - name: Update ECS worker service
+        run: |
+          aws ecs update-service \
+            --cluster tudumm-workers \
+            --service tudumm-worker \
+            --force-new-deployment
+
+      - name: Deploy complete
+        run: echo "✅ Deployed sha=${{ github.sha }} to ap-south-1"

@@ -1,19 +1,47 @@
+# Build context is the MONOREPO ROOT.
+# In deploy.yml: docker build -f apps/web/Dockerfile.worker .
 FROM node:20-alpine AS base
-RUN apk add --no-cache libc6-compat chromium nss freetype freetype-dev harfbuzz ca-certificates ttf-freefont
+
+RUN apk add --no-cache \
+  libc6-compat chromium nss freetype freetype-dev harfbuzz \
+  ca-certificates ttf-freefont
+
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV CHROMIUM_PATH=/usr/bin/chromium-browser
-WORKDIR /app
 
+RUN corepack enable pnpm
+
+# ── deps ──────────────────────────────────────────────────────────────────────
 FROM base AS deps
-COPY package.json pnpm-lock.yaml* ./
-RUN npm install -g pnpm && pnpm install --frozen-lockfile
 
-FROM base AS runner
 WORKDIR /app
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml* ./
+COPY apps/web/package.json ./apps/web/
+COPY packages/ ./packages/
+
+RUN pnpm install --frozen-lockfile --filter @tudumm/web...
+
+# ── runner ────────────────────────────────────────────────────────────────────
+FROM base AS runner
+
+WORKDIR /app
+
 ENV NODE_ENV=production
+
 COPY --from=deps /app/node_modules ./node_modules
-COPY src/workers ./src/workers
-COPY src/lib ./src/lib
-COPY prisma ./prisma
-RUN npx prisma generate
-CMD ["node", "--require", "tsx/cjs", "src/workers/start-worker.ts"]
+COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
+
+# Only copy what the worker needs
+COPY apps/web/src/workers ./apps/web/src/workers
+COPY apps/web/src/lib ./apps/web/src/lib
+COPY apps/web/prisma ./apps/web/prisma
+COPY apps/web/tsconfig.json ./apps/web/
+COPY apps/web/package.json ./apps/web/
+
+RUN cd apps/web && npx prisma generate
+
+WORKDIR /app/apps/web
+
+# Use ts-node directly (tsx is a dev dep available via node_modules/.bin)
+CMD ["node_modules/.bin/tsx", "src/workers/start-worker.ts"]
