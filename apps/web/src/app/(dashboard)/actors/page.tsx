@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Play, Square, RefreshCw, Terminal, Clock, CheckCircle,
-  XCircle, AlertCircle, Search, Loader2,
+  XCircle, AlertCircle, Search, Loader2, Menu, X,
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -143,7 +143,10 @@ export default function ActorsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [aborting, setAborting] = useState(false)
   const [rerunning, setRerunning] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+  // Sidebar open state for mobile
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   function showToast(msg: string) {
     setToast(msg)
@@ -166,6 +169,12 @@ export default function ActorsPage() {
     return () => clearInterval(interval)
   }, [fetchRuns])
 
+  async function manualRefresh() {
+    setRefreshing(true)
+    await fetchRuns()
+    setRefreshing(false)
+  }
+
   const filtered = runs.filter(r => {
     const matchSearch = r.actorName.toLowerCase().includes(search.toLowerCase()) || r.id.includes(search)
     const matchStatus = statusFilter === 'ALL' || r.status === statusFilter
@@ -177,12 +186,20 @@ export default function ActorsPage() {
   async function abort() {
     if (!selected) return
     setAborting(true)
-    await fetch(`/api/runs/${selected.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'CANCELLED' }),
-    }).catch(() => {})
-    showToast('Run cancelled.')
+    try {
+      const res = await fetch(`/api/runs/${selected.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'CANCELLED' }),
+      })
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error ?? 'Failed to abort run')
+      }
+      showToast('Run cancelled.')
+    } catch (e: any) {
+      showToast(e.message ?? 'Failed to abort run')
+    }
     setAborting(false)
     fetchRuns()
   }
@@ -193,14 +210,20 @@ export default function ActorsPage() {
     try {
       let input = {}
       try { input = JSON.parse(selected.input ?? '{}') } catch { /* ignore */ }
-      await fetch('/api/runs/enqueue', {
+      const res = await fetch('/api/runs/enqueue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ actorId: selected.actorId, input }),
       })
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.error ?? 'Re-run failed')
+      }
       showToast('Re-run queued!')
       fetchRuns()
-    } catch { showToast('Re-run failed.') }
+    } catch (e: any) {
+      showToast(e.message ?? 'Re-run failed.')
+    }
     setRerunning(false)
   }
 
@@ -212,35 +235,31 @@ export default function ActorsPage() {
     )
   }
 
-  if (!selected) {
+  // Sidebar panel content (shared between mobile overlay and desktop)
+  function SidebarContent() {
     return (
-      <div className="flex flex-1 min-h-0">
-        {toast && <div className="fixed bottom-6 right-6 z-50 px-4 py-2 bg-violet-600 text-white text-sm rounded-xl shadow-xl">{toast}</div>}
-        {/* Left panel skeleton */}
-        <div className="w-96 shrink-0 border-r border-white/10 flex flex-col">
-          <div className="p-4 border-b border-white/10 space-y-3">
-            <h1 className="text-lg font-semibold">Runs</h1>
-          </div>
-        </div>
-        <div className="flex-1 flex items-center justify-center text-white/30 text-sm">
-          No runs yet. Start by running an actor from the Store.
-        </div>
-      </div>
-    )
-  }
-
-  const StatusIcon = statusConfig[selected.status]?.icon ?? AlertCircle
-
-  return (
-    <div className="flex flex-1 min-h-0">
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-50 px-4 py-2 bg-violet-600 text-white text-sm rounded-xl shadow-xl">{toast}</div>
-      )}
-
-      {/* Left panel */}
-      <div className="w-96 shrink-0 border-r border-white/10 flex flex-col">
+      <>
         <div className="p-4 border-b border-white/10 space-y-3">
-          <h1 className="text-lg font-semibold">Runs</h1>
+          <div className="flex items-center justify-between">
+            <h1 className="text-lg font-semibold">Runs</h1>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={manualRefresh}
+                disabled={refreshing}
+                title="Refresh runs"
+                className="p-1.5 rounded-lg border border-white/10 hover:bg-white/5 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 text-white/60 ${refreshing ? 'animate-spin' : ''}`} />
+              </button>
+              {/* Close button only on mobile */}
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="lg:hidden p-1.5 rounded-lg border border-white/10 hover:bg-white/5 transition-colors"
+              >
+                <X className="h-3.5 w-3.5 text-white/60" />
+              </button>
+            </div>
+          </div>
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-white/40" />
             <input
@@ -270,8 +289,8 @@ export default function ActorsPage() {
             return (
               <button
                 key={run.id}
-                onClick={() => setSelectedId(run.id)}
-                className={`w-full text-left p-3 border-b border-white/5 hover:bg-white/5 transition-colors ${selected.id === run.id ? 'bg-white/8 border-l-2 border-l-violet-500' : ''}`}
+                onClick={() => { setSelectedId(run.id); setSidebarOpen(false) }}
+                className={`w-full text-left p-3 border-b border-white/5 hover:bg-white/5 transition-colors ${selected?.id === run.id ? 'bg-white/8 border-l-2 border-l-violet-500' : ''}`}
               >
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-sm font-medium truncate">{run.actorName}</span>
@@ -287,23 +306,78 @@ export default function ActorsPage() {
             )
           })}
         </div>
+      </>
+    )
+  }
+
+  if (!selected) {
+    return (
+      <div className="flex flex-1 min-h-0">
+        {toast && <div className="fixed bottom-6 right-6 z-50 px-4 py-2 bg-violet-600 text-white text-sm rounded-xl shadow-xl">{toast}</div>}
+        {/* Left panel skeleton */}
+        <div className="hidden lg:flex w-96 shrink-0 border-r border-white/10 flex-col">
+          <div className="p-4 border-b border-white/10 space-y-3">
+            <h1 className="text-lg font-semibold">Runs</h1>
+          </div>
+        </div>
+        <div className="flex-1 flex items-center justify-center text-white/30 text-sm">
+          No runs yet. Start by running an actor from the Store.
+        </div>
+      </div>
+    )
+  }
+
+  const StatusIcon = statusConfig[selected.status]?.icon ?? AlertCircle
+
+  return (
+    <div className="flex flex-1 min-h-0 relative">
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 px-4 py-2 bg-violet-600 text-white text-sm rounded-xl shadow-xl">{toast}</div>
+      )}
+
+      {/* Mobile sidebar overlay */}
+      {sidebarOpen && (
+        <div
+          className="lg:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Left panel — hidden on mobile unless sidebarOpen, w-full on mobile, w-96 on lg+ */}
+      <div className={`
+        flex flex-col border-r border-white/10 shrink-0
+        lg:relative lg:w-96 lg:flex
+        fixed inset-y-0 left-0 z-50 w-full bg-[#0d0d14]
+        transition-transform duration-200
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+      `}>
+        <SidebarContent />
       </div>
 
       {/* Right panel */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Header */}
-        <div className="p-6 border-b border-white/10 flex items-start justify-between shrink-0">
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <h2 className="text-xl font-semibold">{selected.actorName}</h2>
-              <span className={`flex items-center gap-1.5 text-sm ${statusConfig[selected.status]?.color ?? 'text-gray-400'}`}>
-                <StatusIcon className={`h-4 w-4 ${selected.status === 'RUNNING' ? 'animate-spin' : ''}`} />
-                {statusConfig[selected.status]?.label ?? selected.status}
-              </span>
+        <div className="p-4 lg:p-6 border-b border-white/10 flex items-start justify-between shrink-0">
+          <div className="flex items-start gap-3">
+            {/* Mobile sidebar toggle */}
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="lg:hidden mt-0.5 p-1.5 rounded-lg border border-white/10 hover:bg-white/5 transition-colors shrink-0"
+            >
+              <Menu className="h-4 w-4 text-white/60" />
+            </button>
+            <div>
+              <div className="flex items-center gap-3 mb-1">
+                <h2 className="text-xl font-semibold">{selected.actorName}</h2>
+                <span className={`flex items-center gap-1.5 text-sm ${statusConfig[selected.status]?.color ?? 'text-gray-400'}`}>
+                  <StatusIcon className={`h-4 w-4 ${selected.status === 'RUNNING' ? 'animate-spin' : ''}`} />
+                  {statusConfig[selected.status]?.label ?? selected.status}
+                </span>
+              </div>
+              <p className="text-sm font-mono text-white/30">{selected.id}</p>
             </div>
-            <p className="text-sm font-mono text-white/30">{selected.id}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={rerun}
               disabled={rerunning}
@@ -326,7 +400,7 @@ export default function ActorsPage() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-px bg-white/5 border-b border-white/10 shrink-0">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-px bg-white/5 border-b border-white/10 shrink-0">
           {[
             { label: 'Items Scraped', value: selected.itemsScraped.toLocaleString() },
             { label: 'Credits Used',  value: selected.credits },

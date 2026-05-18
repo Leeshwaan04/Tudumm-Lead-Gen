@@ -3,14 +3,14 @@ import React, { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { CreditBalanceCard, StatCard } from '@/components/dashboard/CreditBalanceCard'
-import { RunsTable } from '@/components/dashboard/RunsTable'
 import { UsageChart } from '@/components/dashboard/UsageChart'
 import { Button } from '@/components/ui/button'
 import {
   Play, Plus, Zap, Globe2, Cpu, Activity, Loader2, X, ChevronRight,
-  Terminal, Clock, CheckCircle2, AlertCircle,
+  Terminal, Clock, CheckCircle2, AlertCircle, BarChart2,
 } from 'lucide-react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import type { Run, UsageDataPoint } from '@/types'
 
 function toRun(r: any): Run {
@@ -26,6 +26,21 @@ function toRun(r: any): Run {
     itemsScraped: r.output ? (() => { try { return JSON.parse(r.output)?.itemsScraped } catch { return undefined } })() : undefined,
     inputPayload: {},
   }
+}
+
+// ── Skeleton helpers ─────────────────────────────────────────────────────────
+function PulseSkeleton({ className }: { className?: string }) {
+  return <div className={`animate-pulse rounded-lg bg-white/5 ${className ?? ''}`} />
+}
+
+function StatCardSkeleton() {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-[#121214] p-5 space-y-3">
+      <PulseSkeleton className="h-4 w-24" />
+      <PulseSkeleton className="h-8 w-32" />
+      <PulseSkeleton className="h-3 w-20" />
+    </div>
+  )
 }
 
 // ── Quick Run Modal ──────────────────────────────────────────────────────────
@@ -158,8 +173,24 @@ function LogsDrawer({ runId, onClose }: { runId: string; onClose: () => void }) 
   )
 }
 
+// ── Chart Empty State ────────────────────────────────────────────────────────
+function ChartEmptyState() {
+  return (
+    <div className="h-full flex flex-col items-center justify-center gap-3 text-center">
+      <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center">
+        <BarChart2 className="h-6 w-6 text-white/20" />
+      </div>
+      <div>
+        <p className="text-sm text-white/40 font-medium">No runs yet — start an actor to see activity</p>
+        <p className="text-xs text-white/20 mt-1">Charts will appear after your first run completes</p>
+      </div>
+    </div>
+  )
+}
+
 // ── Main Page ────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
+  const router = useRouter()
   const [showQuickRun, setShowQuickRun] = useState(false)
   const [logsRunId, setLogsRunId] = useState<string | null>(null)
 
@@ -168,19 +199,23 @@ export default function DashboardPage() {
     queryFn: () => fetch('/api/workspace').then(r => r.json()),
   })
 
-  const { data: runsRaw } = useQuery({
+  const { data: runsRaw, isLoading: runsLoading } = useQuery({
     queryKey: ['runs'],
     queryFn: () => fetch('/api/runs').then(r => r.json()),
     refetchInterval: 10000,
   })
 
-  const { data: usageRaw } = useQuery({
+  const { data: usageRaw, isLoading: usageLoading } = useQuery({
     queryKey: ['usage'],
     queryFn: () => fetch('/api/usage').then(r => r.json()),
   })
 
   const runs: Run[] = Array.isArray(runsRaw) ? runsRaw.slice(0, 10).map(toRun) : []
+
+  // Only render the chart when we have at least 2 data points — a single point
+  // produces a broken "stuck dot" in Recharts area charts.
   const usageData: UsageDataPoint[] = Array.isArray(usageRaw) ? usageRaw : []
+  const hasEnoughChartData = usageData.length >= 2
 
   const balance = workspace ? {
     remaining: workspace.creditBalance ?? 0,
@@ -190,19 +225,12 @@ export default function DashboardPage() {
     plan: (workspace.plan?.toLowerCase() ?? 'starter') as any,
   } : null
 
+  // Quick actions: navigate directly to the relevant page instead of opening a modal
   const quickActions = [
-    { label: 'Scrape LinkedIn Profiles', slug: 'linkedin-profile-scraper', color: 'blue' },
-    { label: 'Instagram Follower Export', slug: 'instagram-follower-export', color: 'pink' },
-    { label: 'Google Maps Extractor', slug: 'google-maps-extractor', color: 'yellow' },
+    { label: 'Scrape LinkedIn Profiles', href: '/linkedin', color: 'blue' },
+    { label: 'Instagram Follower Export', href: '/actors', color: 'pink' },
+    { label: 'Google Maps Extractor', href: '/actors', color: 'yellow' },
   ]
-
-  if (wsLoading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-violet-400" />
-      </div>
-    )
-  }
 
   return (
     <>
@@ -210,10 +238,15 @@ export default function DashboardPage() {
       {logsRunId && <LogsDrawer runId={logsRunId} onClose={() => setLogsRunId(null)} />}
 
       <div className="p-6 overflow-y-auto flex-1 space-y-8 animate-in fade-in duration-500">
+        {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">
-              {workspace?.name ?? 'Workspace Overview'}
+              {wsLoading ? (
+                <PulseSkeleton className="h-8 w-56 inline-block" />
+              ) : (
+                workspace?.name ?? 'Workspace Overview'
+              )}
             </h1>
             <p className="text-muted-foreground mt-1">Track your automation performance and credit usage.</p>
           </div>
@@ -234,50 +267,75 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {balance && <CreditBalanceCard balance={balance} />}
-          <StatCard
-            title="Proxy Traffic"
-            value={`${workspace?.proxyGbUsed ?? 0} GB`}
-            subtitle={`of ${workspace?.slots ?? 3} GB included`}
-            trend={8}
-            icon={Globe2}
-            iconColor="text-emerald-400"
-          />
-          <StatCard
-            title="Active Slots"
-            value={`${workspace?.slots ?? 0}`}
-            subtitle="actor slots"
-            icon={Activity}
-            iconColor="text-blue-400"
-          />
-          <StatCard
-            title="Total Runs"
-            value={(Array.isArray(runsRaw) ? runsRaw.length : 0).toString()}
-            subtitle="all time"
-            trend={12}
-            icon={Cpu}
-            iconColor="text-violet-400"
-          />
+        {/* Stats grid — responsive: 1 → 2 → 4 columns, with loading skeletons */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {wsLoading ? (
+            <>
+              <StatCardSkeleton />
+              <StatCardSkeleton />
+              <StatCardSkeleton />
+              <StatCardSkeleton />
+            </>
+          ) : (
+            <>
+              {balance && <CreditBalanceCard balance={balance} />}
+              <StatCard
+                title="Proxy Traffic"
+                value={`${workspace?.proxyGbUsed ?? 0} GB`}
+                subtitle={`of ${workspace?.slots ?? 3} GB included`}
+                trend={8}
+                icon={Globe2}
+                iconColor="text-emerald-400"
+              />
+              <StatCard
+                title="Active Slots"
+                value={`${workspace?.slots ?? 0}`}
+                subtitle="actor slots"
+                icon={Activity}
+                iconColor="text-blue-400"
+              />
+              <StatCard
+                title="Total Runs"
+                value={runsLoading ? '—' : (Array.isArray(runsRaw) ? runsRaw.length : 0).toString()}
+                subtitle="all time"
+                trend={12}
+                icon={Cpu}
+                iconColor="text-violet-400"
+              />
+            </>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-8">
+            {/* Usage / Activity chart */}
             <Card className="bg-[#121214] border-[#27272a]">
               <CardHeader>
                 <CardTitle>Usage Trends</CardTitle>
               </CardHeader>
               <CardContent className="h-[300px]">
-                {usageData.length > 0 ? (
+                {usageLoading ? (
+                  // Loading skeleton for chart
+                  <div className="h-full flex flex-col justify-end gap-2 pb-2">
+                    <div className="flex items-end gap-2 h-full">
+                      {[40, 70, 55, 80, 65, 90, 75].map((h, i) => (
+                        <div
+                          key={i}
+                          className="flex-1 rounded-t animate-pulse bg-white/5"
+                          style={{ height: `${h}%` }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ) : hasEnoughChartData ? (
                   <UsageChart data={usageData} />
                 ) : (
-                  <div className="h-full flex items-center justify-center text-white/30 text-sm">
-                    Run actors to see usage trends
-                  </div>
+                  <ChartEmptyState />
                 )}
               </CardContent>
             </Card>
 
+            {/* Recent Executions */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-semibold">Recent Executions</h2>
@@ -285,13 +343,26 @@ export default function DashboardPage() {
                   <Button variant="link" className="text-indigo-400 p-0">View all</Button>
                 </Link>
               </div>
-              {runs.length > 0 ? (
+
+              {runsLoading ? (
+                <div className="space-y-2">
+                  {[...Array(3)].map((_, i) => (
+                    <div key={i} className="border border-white/10 rounded-xl px-4 py-3 flex items-center gap-3">
+                      <PulseSkeleton className="h-4 w-4 rounded-full shrink-0" />
+                      <div className="flex-1 space-y-1.5">
+                        <PulseSkeleton className="h-3.5 w-40" />
+                        <PulseSkeleton className="h-3 w-28" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : runs.length > 0 ? (
                 <div className="space-y-2">
                   {runs.map(run => (
                     <button
                       key={run.id}
                       onClick={() => setLogsRunId(run.id)}
-                      className="w-full text-left border border-white/10 rounded-xl px-4 py-3 hover:bg-white/3 hover:border-white/20 transition-all group flex items-center justify-between"
+                      className="w-full text-left border border-white/10 rounded-xl px-4 py-3 hover:bg-white/[0.03] hover:border-white/20 transition-all group flex items-center justify-between"
                     >
                       <div className="flex items-center gap-3">
                         {run.status === 'succeeded' ? (
@@ -321,15 +392,16 @@ export default function DashboardPage() {
           </div>
 
           <div className="space-y-8">
+            {/* Quick Actions — navigate to the correct page */}
             <Card className="bg-[#121214] border-[#27272a]">
               <CardHeader>
                 <CardTitle>Quick Actions</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {quickActions.map(({ label, color }) => (
+                {quickActions.map(({ label, href, color }) => (
                   <button
                     key={label}
-                    onClick={() => setShowQuickRun(true)}
+                    onClick={() => router.push(href)}
                     className="w-full text-left flex items-center gap-3 text-sm h-12 border border-[#27272a] hover:bg-[#1c1c1f] rounded-lg px-3 transition-colors"
                   >
                     <div className={`w-8 h-8 rounded bg-${color}-500/10 flex items-center justify-center shrink-0`}>
@@ -341,17 +413,25 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
 
+            {/* Plan card */}
             <Card className="bg-gradient-to-br from-indigo-900/20 to-purple-900/20 border-indigo-500/20">
               <CardContent className="pt-6 space-y-4">
                 <div className="w-12 h-12 rounded-full bg-indigo-500/20 flex items-center justify-center">
                   <Zap className="w-6 h-6 text-indigo-400" />
                 </div>
-                <div className="space-y-2">
-                  <h3 className="font-semibold">Plan: {workspace?.plan ?? 'STARTER'}</h3>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    {workspace?.creditBalance?.toLocaleString() ?? 0} credits remaining · {workspace?.aiCredits?.toLocaleString() ?? 0} AI credits
-                  </p>
-                </div>
+                {wsLoading ? (
+                  <div className="space-y-2">
+                    <PulseSkeleton className="h-4 w-28" />
+                    <PulseSkeleton className="h-3 w-40" />
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <h3 className="font-semibold">Plan: {workspace?.plan ?? 'STARTER'}</h3>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      {workspace?.creditBalance?.toLocaleString() ?? 0} credits remaining · {workspace?.aiCredits?.toLocaleString() ?? 0} AI credits
+                    </p>
+                  </div>
+                )}
                 <Link href="/billing">
                   <Button size="sm" className="w-full bg-indigo-600 hover:bg-indigo-700">
                     View Plans
@@ -360,6 +440,7 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
 
+            {/* Recent Activity sidebar card */}
             <Card className="bg-[#121214] border-[#27272a]">
               <CardHeader>
                 <CardTitle className="text-sm flex items-center gap-2">
@@ -367,23 +448,34 @@ export default function DashboardPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                {runs.slice(0, 5).map(run => (
-                  <div key={run.id} className="flex items-center gap-2 text-xs text-white/50">
-                    {run.status === 'succeeded' ? (
-                      <CheckCircle2 className="h-3 w-3 text-green-400 shrink-0" />
-                    ) : run.status === 'failed' ? (
-                      <AlertCircle className="h-3 w-3 text-red-400 shrink-0" />
-                    ) : (
-                      <Loader2 className="h-3 w-3 text-yellow-400 animate-spin shrink-0" />
-                    )}
-                    <span className="truncate">{run.actorName}</span>
-                    <span className="ml-auto shrink-0 text-white/20">
-                      {new Date(run.startedAt).toLocaleDateString()}
-                    </span>
+                {runsLoading ? (
+                  <div className="space-y-2">
+                    {[...Array(3)].map((_, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <PulseSkeleton className="h-3 w-3 rounded-full shrink-0" />
+                        <PulseSkeleton className="h-3 flex-1" />
+                        <PulseSkeleton className="h-3 w-12 shrink-0" />
+                      </div>
+                    ))}
                   </div>
-                ))}
-                {runs.length === 0 && (
+                ) : runs.length === 0 ? (
                   <p className="text-xs text-white/20 text-center py-2">No activity yet</p>
+                ) : (
+                  runs.slice(0, 5).map(run => (
+                    <div key={run.id} className="flex items-center gap-2 text-xs text-white/50">
+                      {run.status === 'succeeded' ? (
+                        <CheckCircle2 className="h-3 w-3 text-green-400 shrink-0" />
+                      ) : run.status === 'failed' ? (
+                        <AlertCircle className="h-3 w-3 text-red-400 shrink-0" />
+                      ) : (
+                        <Loader2 className="h-3 w-3 text-yellow-400 animate-spin shrink-0" />
+                      )}
+                      <span className="truncate">{run.actorName}</span>
+                      <span className="ml-auto shrink-0 text-white/20">
+                        {new Date(run.startedAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                  ))
                 )}
               </CardContent>
             </Card>

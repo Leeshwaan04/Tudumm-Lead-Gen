@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Search, Star, Play, TrendingUp, Zap, Users, Code2,
-  RefreshCw, X, Plus,
+  RefreshCw, X, Plus, ExternalLink,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -36,11 +36,23 @@ function parseJSON<T>(s: string, fallback: T): T {
   try { return JSON.parse(s) as T; } catch { return fallback; }
 }
 
+// ─── Toast ────────────────────────────────────────────────────────────────────
+
+function StoreToast({ msg, type, onClose }: { msg: string; type: 'success' | 'error'; onClose: () => void }) {
+  useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t) }, [onClose]);
+  return (
+    <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl border shadow-xl text-sm ${type === 'success' ? 'bg-green-500/10 border-green-500/30 text-green-300' : 'bg-red-500/10 border-red-500/30 text-red-300'}`}>
+      <span>{msg}</span>
+      <button onClick={onClose}><X className="h-3.5 w-3.5 opacity-60" /></button>
+    </div>
+  );
+}
+
 const PLATFORMS = ["All", "LinkedIn", "Google", "Twitter", "Instagram", "GitHub", "YouTube"];
 
 // ─── Run Config Modal ─────────────────────────────────────────────────────────
 
-function RunModal({ actor, onClose }: { actor: Actor; onClose: () => void }) {
+function RunModal({ actor, onClose, onToast }: { actor: Actor; onClose: () => void; onToast: (msg: string, type: 'success' | 'error') => void }) {
   const router = useRouter();
   const [url, setUrl] = useState("");
   const [maxResults, setMaxResults] = useState("100");
@@ -64,14 +76,20 @@ function RunModal({ actor, onClose }: { actor: Actor; onClose: () => void }) {
       try { input = JSON.parse(jsonInput); } catch { input = {}; }
     }
     try {
-      await fetch("/api/runs/enqueue", {
+      const res = await fetch("/api/runs/enqueue", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ actorId: actor.id, input }),
       });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error ?? "Failed to launch run");
+      }
       setDone(true);
-      setTimeout(() => { onClose(); router.push("/actors"); }, 1500);
-    } catch { setLaunching(false); }
+    } catch (e: any) {
+      onToast(e.message ?? "Failed to launch run", "error");
+      setLaunching(false);
+    }
   }
 
   return (
@@ -82,12 +100,25 @@ function RunModal({ actor, onClose }: { actor: Actor; onClose: () => void }) {
           <button onClick={onClose} className="text-white/30 hover:text-white"><X className="h-4 w-4" /></button>
         </div>
         {done ? (
-          <div className="flex flex-col items-center justify-center py-8 gap-3">
+          <div className="flex flex-col items-center justify-center py-8 gap-4">
             <div className="h-12 w-12 rounded-full bg-green-500/20 border border-green-500/30 flex items-center justify-center">
               <Play className="h-5 w-5 text-green-400" />
             </div>
             <p className="text-sm font-medium text-green-400">Run queued!</p>
-            <p className="text-xs text-white/40">Redirecting to Runs monitor…</p>
+            <div className="flex gap-2">
+              <button
+                onClick={onClose}
+                className="px-4 py-2 text-sm border border-white/10 rounded-lg hover:bg-white/5 transition-colors"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => { onClose(); router.push("/actors"); }}
+                className="flex items-center gap-2 px-4 py-2 text-sm bg-violet-600 hover:bg-violet-500 rounded-lg transition-colors"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />View Run
+              </button>
+            </div>
           </div>
         ) : (
           <>
@@ -167,7 +198,7 @@ function RunModal({ actor, onClose }: { actor: Actor; onClose: () => void }) {
 
 // ─── Publish Actor Modal ──────────────────────────────────────────────────────
 
-function PublishModal({ onClose }: { onClose: () => void }) {
+function PublishModal({ onClose, onToast }: { onClose: () => void; onToast: (msg: string, type: 'success' | 'error') => void }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [categories, setCategories] = useState<string[]>([]);
@@ -186,7 +217,7 @@ function PublishModal({ onClose }: { onClose: () => void }) {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      await fetch("/api/actors", {
+      const res = await fetch("/api/actors", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -196,9 +227,16 @@ function PublishModal({ onClose }: { onClose: () => void }) {
           tags: JSON.stringify(tags.split(",").map(t => t.trim()).filter(Boolean)),
         }),
       });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error ?? errData.message ?? "Failed to publish actor");
+      }
       setDone(true);
       setTimeout(onClose, 1500);
-    } catch { setSaving(false); }
+    } catch (e: any) {
+      onToast(e.message ?? "Failed to publish actor", "error");
+      setSaving(false);
+    }
   }
 
   return (
@@ -263,6 +301,11 @@ export default function StorePage() {
   const [activePlatform, setActivePlatform] = useState("All");
   const [runActor, setRunActor] = useState<Actor | null>(null);
   const [showPublish, setShowPublish] = useState(false);
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
+
+  function showToast(msg: string, type: 'success' | 'error' = 'success') {
+    setToast({ msg, type });
+  }
 
   useEffect(() => {
     fetch("/api/actors?store=true")
@@ -288,10 +331,29 @@ export default function StorePage() {
 
   const totalRuns = actors.reduce((s, a) => s + (a.totalRuns ?? 0), 0);
 
+  // Unique authors/developers count from data
+  const developerCount = useMemo(() => {
+    const devs = new Set<string>();
+    actors.forEach(a => { if (a.author) devs.add(a.author); });
+    return devs.size > 0 ? devs.size.toLocaleString() : actors.length > 0 ? actors.length.toLocaleString() : "0";
+  }, [actors]);
+
   return (
     <div className="p-6 overflow-y-auto flex-1 space-y-6">
-      {runActor && <RunModal actor={runActor} onClose={() => setRunActor(null)} />}
-      {showPublish && <PublishModal onClose={() => setShowPublish(false)} />}
+      {toast && <StoreToast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
+      {runActor && (
+        <RunModal
+          actor={runActor}
+          onClose={() => setRunActor(null)}
+          onToast={showToast}
+        />
+      )}
+      {showPublish && (
+        <PublishModal
+          onClose={() => setShowPublish(false)}
+          onToast={showToast}
+        />
+      )}
 
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -314,7 +376,7 @@ export default function StorePage() {
         {[
           { label: "Total Actors",  value: loading ? "…" : actors.length.toLocaleString(), icon: Zap,       color: "text-violet-400" },
           { label: "Total Runs",    value: loading ? "…" : formatRuns(totalRuns),            icon: TrendingUp, color: "text-emerald-400" },
-          { label: "Developers",    value: "4,200+",                                          icon: Users,      color: "text-blue-400"   },
+          { label: "Developers",    value: loading ? "…" : developerCount,                   icon: Users,      color: "text-blue-400"   },
         ].map(stat => (
           <div key={stat.label} className="border border-white/10 rounded-xl p-4 flex items-center gap-3">
             <stat.icon className={`h-5 w-5 ${stat.color}`} />
@@ -337,21 +399,21 @@ export default function StorePage() {
         />
       </div>
 
-      {/* Category filter */}
-      <div className="flex gap-2 flex-wrap">
+      {/* Category filter — scrollable on mobile */}
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
         {allCategories.map(cat => (
           <button key={cat} onClick={() => setActiveCategory(cat)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${activeCategory === cat ? 'bg-violet-600 text-white border-violet-600' : 'border-white/10 text-white/50 hover:border-violet-500/50 hover:text-white'}`}>
+            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all shrink-0 ${activeCategory === cat ? 'bg-violet-600 text-white border-violet-600' : 'border-white/10 text-white/50 hover:border-violet-500/50 hover:text-white'}`}>
             {cat}
           </button>
         ))}
       </div>
 
-      {/* Platform filter */}
-      <div className="flex gap-2 flex-wrap">
+      {/* Platform filter — scrollable on mobile */}
+      <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
         {PLATFORMS.map(p => (
           <button key={p} onClick={() => setActivePlatform(p)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${activePlatform === p ? 'bg-indigo-600 text-white border-indigo-600' : 'border-white/10 text-white/40 hover:border-indigo-500/50 hover:text-white'}`}>
+            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all shrink-0 ${activePlatform === p ? 'bg-indigo-600 text-white border-indigo-600' : 'border-white/10 text-white/40 hover:border-indigo-500/50 hover:text-white'}`}>
             {p}
           </button>
         ))}

@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface ApiKey { id: string; name: string; keyPrefix: string; lastUsedAt: string | null; createdAt: string; scopes: string[] }
+interface ApiKey { id: string; name: string; keyPrefix: string; lastUsedAt: string | null; createdAt: string; scopes: string[]; key?: string }
 interface Member { id: string; userId: string; role: string; user: { name: string | null; email: string } }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
@@ -21,6 +21,47 @@ function Toast({ msg, type, onClose }: { msg: string; type: 'success' | 'error';
       <button onClick={onClose}><X className="h-3.5 w-3.5 opacity-60" /></button>
     </div>
   )
+}
+
+// ─── Password Strength Indicator ─────────────────────────────────────────────
+function PasswordStrength({ password }: { password: string }) {
+  if (!password) return null;
+
+  function getStrength(pwd: string): { label: string; color: string; width: string; bars: number } {
+    const hasLower = /[a-z]/.test(pwd);
+    const hasUpper = /[A-Z]/.test(pwd);
+    const hasNumber = /[0-9]/.test(pwd);
+    const hasSpecial = /[^a-zA-Z0-9]/.test(pwd);
+    const varietyCount = [hasLower, hasUpper, hasNumber, hasSpecial].filter(Boolean).length;
+
+    if (pwd.length < 8) {
+      return { label: 'Weak', color: 'bg-red-500', width: 'w-1/3', bars: 1 };
+    }
+    if (pwd.length >= 8 && varietyCount <= 2) {
+      return { label: 'Medium', color: 'bg-yellow-500', width: 'w-2/3', bars: 2 };
+    }
+    if (pwd.length >= 12 && varietyCount >= 3) {
+      return { label: 'Strong', color: 'bg-green-500', width: 'w-full', bars: 3 };
+    }
+    return { label: 'Medium', color: 'bg-yellow-500', width: 'w-2/3', bars: 2 };
+  }
+
+  const strength = getStrength(password);
+  return (
+    <div className="space-y-1.5">
+      <div className="flex gap-1.5">
+        {[1, 2, 3].map(bar => (
+          <div
+            key={bar}
+            className={`h-1 flex-1 rounded-full transition-colors duration-300 ${bar <= strength.bars ? strength.color : 'bg-white/10'}`}
+          />
+        ))}
+      </div>
+      <p className={`text-xs ${strength.bars === 1 ? 'text-red-400' : strength.bars === 2 ? 'text-yellow-400' : 'text-green-400'}`}>
+        Password strength: {strength.label}
+      </p>
+    </div>
+  );
 }
 
 // ─── New Key Modal ────────────────────────────────────────────────────────────
@@ -207,7 +248,9 @@ export default function SettingsPage() {
     } catch (e: any) { showToast(e.message, 'error') }
     setInviting(false)
   }
-  async function removeMember(id: string) {
+  async function removeMember(id: string, name: string) {
+    const displayName = name || 'this member'
+    if (!confirm(`Are you sure you want to remove ${displayName}?`)) return
     setRemovingId(id)
     await fetch(`/api/members/${id}`, { method: 'DELETE' })
     qc.invalidateQueries({ queryKey: ['members'] })
@@ -249,6 +292,9 @@ export default function SettingsPage() {
   const [revokingId, setRevokingId] = useState<string | null>(null)
   const [showKeyId, setShowKeyId] = useState<Record<string, boolean>>({})
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  // Store full key values in memory (only available at creation time via createdKey modal)
+  // For listed keys we only have prefix; copy will copy what we have
+  const [fullKeyStore, setFullKeyStore] = useState<Record<string, string>>({})
 
   async function revokeKey(id: string) {
     if (!confirm('Revoke this key?')) return
@@ -259,8 +305,10 @@ export default function SettingsPage() {
     showToast('Key revoked')
   }
 
-  function copyKey(id: string, prefix: string) {
-    navigator.clipboard.writeText(prefix + '...')
+  function copyKey(id: string, keyPrefix: string, fullKey?: string) {
+    // Copy the full key if we have it stored (from creation), otherwise copy what we have
+    const valueToCopy = fullKey ?? fullKeyStore[id] ?? keyPrefix
+    navigator.clipboard.writeText(valueToCopy)
     setCopiedId(id)
     setTimeout(() => setCopiedId(null), 2000)
   }
@@ -271,28 +319,35 @@ export default function SettingsPage() {
       {showNewKey && (
         <NewKeyModal
           onClose={() => setShowNewKey(false)}
-          onCreated={key => { setShowNewKey(false); setCreatedKey(key); qc.invalidateQueries({ queryKey: ['api-keys'] }) }}
+          onCreated={key => {
+            setShowNewKey(false)
+            setCreatedKey(key)
+            qc.invalidateQueries({ queryKey: ['api-keys'] })
+          }}
         />
       )}
       {createdKey && <CreatedKeyModal apiKey={createdKey} onClose={() => setCreatedKey(null)} />}
 
-      <div className="flex flex-1 min-h-0">
-        {/* Sidebar */}
-        <div className="w-56 shrink-0 border-r border-white/10 p-4 space-y-1">
-          <p className="text-xs text-white/30 uppercase tracking-wider px-3 mb-3">Settings</p>
-          {tabs.map(tab => {
-            const Icon = tab.icon
-            return (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${activeTab === tab.id ? 'bg-violet-600/20 text-violet-300 border border-violet-500/20' : 'text-white/60 hover:bg-white/5 hover:text-white'}`}>
-                <Icon className="h-4 w-4" />{tab.label}
-              </button>
-            )
-          })}
+      <div className="flex flex-1 min-h-0 flex-col md:flex-row">
+        {/* Sidebar — horizontal scrollable tab bar on mobile, vertical sidebar on md+ */}
+        <div className="md:w-56 md:shrink-0 md:border-r md:border-white/10 md:p-4 md:space-y-1 border-b border-white/10">
+          <p className="hidden md:block text-xs text-white/30 uppercase tracking-wider px-3 mb-3">Settings</p>
+          {/* Mobile: horizontal tab strip */}
+          <div className="flex md:flex-col gap-1 overflow-x-auto px-4 py-2 md:px-0 md:py-0 md:overflow-x-visible scrollbar-hide">
+            {tabs.map(tab => {
+              const Icon = tab.icon
+              return (
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-2 md:gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors shrink-0 md:w-full ${activeTab === tab.id ? 'bg-violet-600/20 text-violet-300 border border-violet-500/20' : 'text-white/60 hover:bg-white/5 hover:text-white'}`}>
+                  <Icon className="h-4 w-4" />{tab.label}
+                </button>
+              )
+            })}
+          </div>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-8 max-w-2xl">
+        <div className="flex-1 overflow-y-auto p-6 md:p-8 max-w-2xl">
 
           {/* ── Profile ──────────────────────────────────────────────────── */}
           {activeTab === 'profile' && (
@@ -362,7 +417,9 @@ export default function SettingsPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-xs px-2 py-0.5 bg-white/5 border border-white/10 rounded-full text-white/50">{m.role}</span>
-                        <button onClick={() => removeMember(m.id)} disabled={removingId === m.id}
+                        <button
+                          onClick={() => removeMember(m.id, m.user.name ?? m.user.email)}
+                          disabled={removingId === m.id}
                           className="p-1.5 rounded hover:bg-red-500/10 text-red-400/50 hover:text-red-400 disabled:opacity-40">
                           {removingId === m.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                         </button>
@@ -403,8 +460,11 @@ export default function SettingsPage() {
                 <div className="space-y-3">
                   <input type="password" placeholder="Current password" value={curPwd} onChange={e => setCurPwd(e.target.value)}
                     className="w-full px-3 py-2 text-sm bg-white/5 border border-white/10 rounded-lg outline-none focus:border-violet-500 text-white" />
-                  <input type="password" placeholder="New password" value={newPwd} onChange={e => setNewPwd(e.target.value)}
-                    className="w-full px-3 py-2 text-sm bg-white/5 border border-white/10 rounded-lg outline-none focus:border-violet-500 text-white" />
+                  <div className="space-y-2">
+                    <input type="password" placeholder="New password" value={newPwd} onChange={e => setNewPwd(e.target.value)}
+                      className="w-full px-3 py-2 text-sm bg-white/5 border border-white/10 rounded-lg outline-none focus:border-violet-500 text-white" />
+                    <PasswordStrength password={newPwd} />
+                  </div>
                   <input type="password" placeholder="Confirm new password" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)}
                     className="w-full px-3 py-2 text-sm bg-white/5 border border-white/10 rounded-lg outline-none focus:border-violet-500 text-white" />
                   {pwdError && (
@@ -467,9 +527,15 @@ export default function SettingsPage() {
                             className="p-1 rounded hover:bg-white/5 transition-colors">
                             {showKeyId[key.id] ? <EyeOff className="h-3.5 w-3.5 text-white/40" /> : <Eye className="h-3.5 w-3.5 text-white/40" />}
                           </button>
-                          <button onClick={() => copyKey(key.id, key.keyPrefix)}
-                            className="p-1 rounded hover:bg-white/5 transition-colors">
-                            {copiedId === key.id ? <Check className="h-3.5 w-3.5 text-green-400" /> : <Copy className="h-3.5 w-3.5 text-white/40" />}
+                          <button
+                            onClick={() => copyKey(key.id, key.keyPrefix, key.key)}
+                            className="flex items-center gap-1 px-2 py-1 rounded hover:bg-white/5 transition-colors text-xs"
+                            title="Copy API key"
+                          >
+                            {copiedId === key.id
+                              ? <><Check className="h-3.5 w-3.5 text-green-400" /><span className="text-green-400">Copied!</span></>
+                              : <><Copy className="h-3.5 w-3.5 text-white/40" /><span className="text-white/40">Copy</span></>
+                            }
                           </button>
                         </div>
                       </div>

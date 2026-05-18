@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   GitBranch, Plus, Linkedin, Mail, CheckCircle, Clock, XCircle,
   Pause, Play, Users2, MessageSquare, X, RefreshCw, Edit2, Trash2,
-  ChevronDown, ChevronUp,
+  ChevronDown, ChevronUp, Menu,
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -90,14 +90,20 @@ function NewSequenceModal({ onClose, onCreate }: {
   const [name, setName] = useState('')
   const [platform, setPlatform] = useState('LINKEDIN')
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) return
     setSaving(true)
-    await onCreate(name.trim(), platform)
+    setError(null)
+    const result = await onCreate(name.trim(), platform)
     setSaving(false)
-    onClose()
+    if (result === null) {
+      setError('Failed to create sequence. Please try again.')
+    } else {
+      onClose()
+    }
   }
 
   return (
@@ -130,6 +136,9 @@ function NewSequenceModal({ onClose, onCreate }: {
               <option value="MIXED">Mixed</option>
             </select>
           </div>
+          {error && (
+            <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</p>
+          )}
           <button
             type="submit"
             disabled={saving || !name.trim()}
@@ -152,14 +161,18 @@ function AddLeadsModal({ sequenceId, onClose, onAdded }: {
 }) {
   const [leads, setLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [adding, setAdding] = useState(false)
 
   useEffect(() => {
     fetch('/api/leads')
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error(`Server returned ${r.status}`)
+        return r.json()
+      })
       .then(data => setLeads(Array.isArray(data) ? data : (data.leads ?? [])))
-      .catch(() => setLeads([]))
+      .catch(err => setFetchError(err instanceof Error ? err.message : 'Failed to load leads.'))
       .finally(() => setLoading(false))
   }, [])
 
@@ -171,7 +184,7 @@ function AddLeadsModal({ sequenceId, onClose, onAdded }: {
     })
   }
 
-  async function confirm() {
+  async function confirmAdd() {
     setAdding(true)
     for (const leadId of Array.from(selected)) {
       await fetch(`/api/sequences/${sequenceId}/leads`, {
@@ -194,6 +207,10 @@ function AddLeadsModal({ sequenceId, onClose, onAdded }: {
         </div>
         {loading ? (
           <div className="flex justify-center py-8"><RefreshCw className="h-5 w-5 animate-spin text-violet-400" /></div>
+        ) : fetchError ? (
+          <div className="py-6 text-center">
+            <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{fetchError}</p>
+          </div>
         ) : (
           <div className="max-h-72 overflow-y-auto space-y-1">
             {leads.length === 0 && <p className="text-sm text-white/30 text-center py-8">No leads found.</p>}
@@ -216,8 +233,8 @@ function AddLeadsModal({ sequenceId, onClose, onAdded }: {
         <div className="flex justify-end gap-2">
           <button onClick={onClose} className="px-4 py-2 text-sm border border-white/10 rounded-lg hover:bg-white/5 transition-colors">Cancel</button>
           <button
-            onClick={confirm}
-            disabled={selected.size === 0 || adding}
+            onClick={confirmAdd}
+            disabled={selected.size === 0 || adding || !!fetchError}
             className="px-4 py-2 text-sm bg-violet-600 hover:bg-violet-500 disabled:opacity-50 rounded-lg transition-colors"
           >
             {adding ? 'Adding…' : `Add ${selected.size} Lead${selected.size !== 1 ? 's' : ''}`}
@@ -351,10 +368,11 @@ export default function SequencesPage() {
   const [showAddLeads, setShowAddLeads] = useState(false)
   const [togglingStatus, setTogglingStatus] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   function showToast(msg: string) {
     setToast(msg)
-    setTimeout(() => setToast(null), 3000)
+    setTimeout(() => setToast(null), 3500)
   }
 
   const fetchSequences = useCallback(async () => {
@@ -380,13 +398,20 @@ export default function SequencesPage() {
 
   const seq = detail ?? sequences.find(s => s.id === selectedId) ?? null
 
+  function selectSequence(id: string) {
+    setSelectedId(id)
+    setSidebarOpen(false) // close sidebar on mobile after selecting
+  }
+
   async function createSequence(name: string, platform: string): Promise<Sequence | null> {
     try {
-      const data = await fetch('/api/sequences', {
+      const res = await fetch('/api/sequences', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, platform }),
-      }).then(r => r.json())
+      })
+      if (!res.ok) throw new Error(`Server returned ${res.status}`)
+      const data = await res.json()
       await fetchSequences()
       if (data.id) setSelectedId(data.id)
       return data
@@ -397,29 +422,39 @@ export default function SequencesPage() {
     if (!seq) return
     setTogglingStatus(true)
     const nextStatus = seq.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE'
-    await fetch(`/api/sequences/${seq.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: nextStatus }),
-    }).catch(() => {})
-    await fetchSequences()
-    setSelectedId(seq.id) // re-trigger detail fetch
+    try {
+      const res = await fetch(`/api/sequences/${seq.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus }),
+      })
+      if (!res.ok) throw new Error(`Server returned ${res.status}`)
+      await fetchSequences()
+      setSelectedId(seq.id) // re-trigger detail fetch
+    } catch (err) {
+      showToast(`Failed to update status: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    }
     setTogglingStatus(false)
   }
 
   async function removeLead(leadId: string) {
     if (!seq) return
-    await fetch(`/api/sequences/${seq.id}/leads`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ leadId }),
-    }).catch(() => {})
-    setSelectedId(seq.id)
-    showToast('Lead removed.')
+    try {
+      const res = await fetch(`/api/sequences/${seq.id}/leads`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadId }),
+      })
+      if (!res.ok) throw new Error(`Server returned ${res.status}`)
+      setSelectedId(seq.id)
+      showToast('Lead removed.')
+    } catch (err) {
+      showToast(`Failed to remove lead: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    }
   }
 
   return (
-    <div className="flex flex-1 min-h-0">
+    <div className="flex flex-1 min-h-0 relative">
       {toast && <div className="fixed bottom-6 right-6 z-50 px-4 py-2 bg-violet-600 text-white text-sm rounded-xl shadow-xl">{toast}</div>}
       {showNew && <NewSequenceModal onClose={() => setShowNew(false)} onCreate={createSequence} />}
       {showAddLeads && seq && (
@@ -430,18 +465,39 @@ export default function SequencesPage() {
         />
       )}
 
+      {/* Mobile sidebar overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/50 sm:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Left sidebar */}
-      <div className="w-80 shrink-0 border-r border-white/10 flex flex-col">
+      <div className={`
+        shrink-0 border-r border-white/10 flex flex-col z-40
+        fixed inset-y-0 left-0 w-80 bg-[#09090b] transition-transform duration-200
+        sm:relative sm:translate-x-0 sm:w-80 sm:bg-transparent
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full sm:translate-x-0'}
+      `}>
         <div className="p-4 border-b border-white/10 flex items-center justify-between">
           <h1 className="text-lg font-semibold flex items-center gap-2">
             <GitBranch className="h-5 w-5 text-violet-400" />Sequences
           </h1>
-          <button
-            onClick={() => setShowNew(true)}
-            className="flex items-center gap-1 px-2.5 py-1.5 bg-violet-600 hover:bg-violet-500 rounded-lg text-xs transition-colors"
-          >
-            <Plus className="h-3.5 w-3.5" />New
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowNew(true)}
+              className="flex items-center gap-1 px-2.5 py-1.5 bg-violet-600 hover:bg-violet-500 rounded-lg text-xs transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5" />New
+            </button>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="sm:hidden p-1.5 text-white/30 hover:text-white"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -457,7 +513,7 @@ export default function SequencesPage() {
           ) : sequences.map(s => (
             <button
               key={s.id}
-              onClick={() => setSelectedId(s.id)}
+              onClick={() => selectSequence(s.id)}
               className={`w-full text-left p-4 border-b border-white/5 hover:bg-white/3 transition-colors ${selectedId === s.id ? 'bg-white/5 border-l-2 border-l-violet-500' : ''}`}
             >
               <div className="flex items-start justify-between gap-2 mb-2">
@@ -475,12 +531,19 @@ export default function SequencesPage() {
       </div>
 
       {/* Detail panel */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto min-w-0">
         {!seq || detailLoading ? (
           <div className="flex flex-col items-center justify-center h-full text-white/30 text-sm gap-3">
             {detailLoading
               ? <RefreshCw className="h-6 w-6 animate-spin text-violet-400" />
               : <>
+                  {/* Mobile toggle button shown when no sequence is selected */}
+                  <button
+                    onClick={() => setSidebarOpen(true)}
+                    className="sm:hidden flex items-center gap-2 px-3 py-2 border border-white/10 rounded-lg text-xs text-white/50 hover:bg-white/5 transition-colors mb-2"
+                  >
+                    <Menu className="h-4 w-4" />View Sequences
+                  </button>
                   <GitBranch className="h-10 w-10" />
                   <p>Select a sequence to view details</p>
                   <button
@@ -496,11 +559,21 @@ export default function SequencesPage() {
           <div className="p-6 space-y-8">
             {/* Header */}
             <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <h2 className="text-xl font-semibold">{seq.name}</h2>
-                  {platformBadge(seq.platform)}
-                  {statusBadge(seq.status)}
+              <div className="flex items-start gap-3">
+                {/* Mobile: button to open sidebar */}
+                <button
+                  onClick={() => setSidebarOpen(true)}
+                  className="sm:hidden mt-1 p-1.5 text-white/30 hover:text-white transition-colors"
+                  title="View all sequences"
+                >
+                  <Menu className="h-4 w-4" />
+                </button>
+                <div>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <h2 className="text-xl font-semibold">{seq.name}</h2>
+                    {platformBadge(seq.platform)}
+                    {statusBadge(seq.status)}
+                  </div>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -522,7 +595,7 @@ export default function SequencesPage() {
             </div>
 
             {/* Stats row */}
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               {[
                 { label: 'Lead Count',  value: seq.leadCount ?? 0 },
                 { label: 'Sent',        value: seq.sentCount ?? 0 },

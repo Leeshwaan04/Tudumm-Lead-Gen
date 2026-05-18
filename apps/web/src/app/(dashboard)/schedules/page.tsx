@@ -64,6 +64,11 @@ function nextRunRelative(nextRunAt: string | null): string {
   return `in ${d}d ${rem}h`
 }
 
+function isValidCron(cron: string): boolean {
+  const parts = cron.trim().split(/\s+/)
+  return parts.length === 5
+}
+
 // ─── Schedule Form ────────────────────────────────────────────────────────────
 
 interface ScheduleFormProps {
@@ -85,6 +90,7 @@ function ScheduleForm({ actors, initial, onSubmit, onClose, title }: ScheduleFor
   const [timezone, setTimezone] = useState(initial?.timezone ?? 'UTC')
   const [input, setInput] = useState(initial?.input ?? '{}')
   const [saving, setSaving] = useState(false)
+  const [errors, setErrors] = useState<{ name?: string; actorId?: string; cron?: string }>({})
 
   function selectPreset(label: string) {
     setCronPreset(label)
@@ -94,7 +100,15 @@ function ScheduleForm({ actors, initial, onSubmit, onClose, title }: ScheduleFor
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim() || !actorId) return
+    const newErrors: { name?: string; actorId?: string; cron?: string } = {}
+    if (!name.trim()) newErrors.name = 'Schedule name is required.'
+    if (!actorId) newErrors.actorId = 'Please select an actor.'
+    if (!isValidCron(cron)) newErrors.cron = 'Cron expression must have exactly 5 parts (e.g. 0 9 * * 1-5).'
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors)
+      return
+    }
+    setErrors({})
     setSaving(true)
     await onSubmit({ name, actorId, cronExpr: cron, timezone, input })
     setSaving(false)
@@ -114,22 +128,24 @@ function ScheduleForm({ actors, initial, onSubmit, onClose, title }: ScheduleFor
               <label className="text-xs text-white/40 mb-1.5 block">Schedule Name</label>
               <input
                 value={name}
-                onChange={e => setName(e.target.value)}
+                onChange={e => { setName(e.target.value); if (errors.name) setErrors(prev => ({ ...prev, name: undefined })) }}
                 placeholder="Daily LinkedIn Scrape"
-                className="w-full px-3 py-2 text-sm bg-white/5 border border-white/10 rounded-lg outline-none focus:border-violet-500 text-white placeholder:text-white/30"
+                className={`w-full px-3 py-2 text-sm bg-white/5 border rounded-lg outline-none focus:border-violet-500 text-white placeholder:text-white/30 ${errors.name ? 'border-red-500' : 'border-white/10'}`}
                 autoFocus
               />
+              {errors.name && <p className="text-xs text-red-400 mt-1">{errors.name}</p>}
             </div>
             <div>
               <label className="text-xs text-white/40 mb-1.5 block">Actor</label>
               <select
                 value={actorId}
-                onChange={e => setActorId(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#09090b] border border-white/10 rounded-lg outline-none focus:border-violet-500 text-white"
+                onChange={e => { setActorId(e.target.value); if (errors.actorId) setErrors(prev => ({ ...prev, actorId: undefined })) }}
+                className={`w-full px-3 py-2 text-sm bg-[#09090b] border rounded-lg outline-none focus:border-violet-500 text-white ${errors.actorId ? 'border-red-500' : 'border-white/10'}`}
               >
                 {actors.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                 {actors.length === 0 && <option value="">No actors found</option>}
               </select>
+              {errors.actorId && <p className="text-xs text-red-400 mt-1">{errors.actorId}</p>}
             </div>
           </div>
 
@@ -149,10 +165,11 @@ function ScheduleForm({ actors, initial, onSubmit, onClose, title }: ScheduleFor
             </div>
             <input
               value={cron}
-              onChange={e => { setCron(e.target.value); setCronPreset('Custom') }}
+              onChange={e => { setCron(e.target.value); setCronPreset('Custom'); if (errors.cron) setErrors(prev => ({ ...prev, cron: undefined })) }}
               placeholder="0 9 * * 1-5"
-              className="w-full px-3 py-2 text-sm font-mono bg-white/5 border border-white/10 rounded-lg outline-none focus:border-violet-500 text-white"
+              className={`w-full px-3 py-2 text-sm font-mono bg-white/5 border rounded-lg outline-none focus:border-violet-500 text-white ${errors.cron ? 'border-red-500' : 'border-white/10'}`}
             />
+            {errors.cron && <p className="text-xs text-red-400 mt-1">{errors.cron}</p>}
           </div>
 
           <div>
@@ -183,7 +200,7 @@ function ScheduleForm({ actors, initial, onSubmit, onClose, title }: ScheduleFor
             </button>
             <button
               type="submit"
-              disabled={saving || !name.trim()}
+              disabled={saving}
               className="px-4 py-2 text-sm bg-violet-600 hover:bg-violet-500 disabled:opacity-50 rounded-lg transition-colors"
             >
               {saving ? 'Saving…' : title}
@@ -208,7 +225,7 @@ export default function SchedulesPage() {
 
   function showToast(msg: string) {
     setToast(msg)
-    setTimeout(() => setToast(null), 3000)
+    setTimeout(() => setToast(null), 3500)
   }
 
   const fetchData = useCallback(async () => {
@@ -242,19 +259,29 @@ export default function SchedulesPage() {
 
   async function toggleStatus(id: string, current: string) {
     const newStatus = current === 'ACTIVE' ? 'PAUSED' : 'ACTIVE'
-    await fetch(`/api/schedules/${id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: newStatus }),
-    })
-    fetchData()
+    try {
+      const res = await fetch(`/api/schedules/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      })
+      if (!res.ok) throw new Error(`Status ${res.status}`)
+      fetchData()
+    } catch (err) {
+      showToast(`Failed to update status: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    }
   }
 
   async function deleteSchedule(id: string) {
-    if (!confirm('Delete this schedule?')) return
-    await fetch(`/api/schedules/${id}`, { method: 'DELETE' })
-    setSchedules(prev => prev.filter(s => s.id !== id))
-    showToast('Schedule deleted.')
+    if (!confirm('Are you sure you want to delete this schedule? This cannot be undone.')) return
+    try {
+      const res = await fetch(`/api/schedules/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error(`Status ${res.status}`)
+      setSchedules(prev => prev.filter(s => s.id !== id))
+      showToast('Schedule deleted.')
+    } catch (err) {
+      showToast(`Failed to delete schedule: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    }
   }
 
   async function runNow(schedule: Schedule) {
@@ -262,13 +289,24 @@ export default function SchedulesPage() {
     try {
       let inputObj = {}
       try { inputObj = JSON.parse(schedule.input ?? '{}') } catch { /* ignore */ }
-      await fetch('/api/runs/enqueue', {
+      const res = await fetch('/api/runs/enqueue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ actorId: schedule.actorId, input: inputObj }),
       })
+      if (!res.ok) {
+        let detail = `Status ${res.status}`
+        try {
+          const body = await res.json()
+          if (body?.error) detail = body.error
+          else if (body?.message) detail = body.message
+        } catch { /* ignore */ }
+        throw new Error(detail)
+      }
       showToast('Run enqueued!')
-    } catch { showToast('Run failed.') }
+    } catch (err) {
+      showToast(`Run failed: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    }
     setRunningId(null)
   }
 
@@ -292,7 +330,7 @@ export default function SchedulesPage() {
   }
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
+    <div className="p-6 space-y-6">
       {toast && (
         <div className="fixed bottom-6 right-6 z-50 px-4 py-2 bg-violet-600 text-white text-sm rounded-xl shadow-xl">{toast}</div>
       )}
@@ -328,23 +366,23 @@ export default function SchedulesPage() {
           No schedules yet. Create one to automate actor runs.
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {schedules.map(sch => (
             <div key={sch.id} className="border border-white/10 rounded-xl p-5 hover:border-white/20 transition-colors">
               <div className="flex items-start justify-between gap-4">
-                <div className="flex items-start gap-3">
+                <div className="flex items-start gap-3 min-w-0">
                   <div className={`mt-1 h-2 w-2 rounded-full shrink-0 ${sch.status === 'ACTIVE' ? 'bg-green-400' : 'bg-white/20'}`} />
-                  <div>
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <h3 className="font-medium">{sch.name}</h3>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${sch.status === 'ACTIVE' ? 'bg-green-400/10 text-green-400' : 'bg-white/5 text-white/40'}`}>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                      <h3 className="font-medium truncate">{sch.name}</h3>
+                      <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${sch.status === 'ACTIVE' ? 'bg-green-400/10 text-green-400' : 'bg-white/5 text-white/40'}`}>
                         {sch.status}
                       </span>
                     </div>
-                    <p className="text-sm text-white/50">{sch.actorName}</p>
+                    <p className="text-sm text-white/50 truncate">{sch.actorName}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 shrink-0">
                   <button
                     onClick={() => setEditSchedule(sch)}
                     className="p-2 rounded-lg border border-white/10 hover:bg-white/5 transition-colors"
@@ -380,7 +418,7 @@ export default function SchedulesPage() {
                 </div>
               </div>
 
-              <div className="mt-4 grid grid-cols-4 gap-4 text-sm">
+              <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <p className="text-xs text-white/30 mb-1 flex items-center gap-1"><Clock className="h-3 w-3" />Schedule</p>
                   <p className="font-mono text-xs text-violet-300">{sch.cron}</p>
@@ -389,16 +427,16 @@ export default function SchedulesPage() {
                 </div>
                 <div>
                   <p className="text-xs text-white/30 mb-1 flex items-center gap-1"><CheckCircle className="h-3 w-3" />Last Run</p>
-                  <p className="text-white/70 text-sm">{sch.lastRunAt ? new Date(sch.lastRunAt).toLocaleString() : 'Never'}</p>
+                  <p className="text-white/70 text-xs">{sch.lastRunAt ? new Date(sch.lastRunAt).toLocaleString() : 'Never'}</p>
                 </div>
                 <div>
                   <p className="text-xs text-white/30 mb-1 flex items-center gap-1"><Calendar className="h-3 w-3" />Next Run</p>
-                  <p className="text-white/70 text-sm">{sch.nextRunAt ? new Date(sch.nextRunAt).toLocaleString() : '—'}</p>
+                  <p className="text-white/70 text-xs">{sch.nextRunAt ? new Date(sch.nextRunAt).toLocaleString() : '—'}</p>
                   <p className="text-xs text-white/40 mt-0.5">{nextRunRelative(sch.nextRunAt)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-white/30 mb-1 flex items-center gap-1"><AlertCircle className="h-3 w-3" />Last Status</p>
-                  <p className={`text-sm ${sch.lastRunStatus === 'SUCCEEDED' ? 'text-green-400' : sch.lastRunStatus === 'FAILED' ? 'text-red-400' : 'text-white/70'}`}>
+                  <p className={`text-xs ${sch.lastRunStatus === 'SUCCEEDED' ? 'text-green-400' : sch.lastRunStatus === 'FAILED' ? 'text-red-400' : 'text-white/70'}`}>
                     {sch.lastRunStatus ?? '—'}
                   </p>
                 </div>

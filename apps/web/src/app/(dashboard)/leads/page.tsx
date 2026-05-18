@@ -22,6 +22,48 @@ interface Activity {
   id: string; type: string; note: string | null; createdAt: string
 }
 
+// ─── Toast ────────────────────────────────────────────────────────────────────
+type ToastType = 'success' | 'error'
+interface ToastMessage { id: number; type: ToastType; message: string }
+
+let toastId = 0
+function Toast({ toasts, onRemove }: { toasts: ToastMessage[]; onRemove: (id: number) => void }) {
+  return (
+    <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
+      {toasts.map(t => (
+        <div key={t.id}
+          className={`flex items-center gap-2 px-4 py-3 rounded-xl shadow-xl border text-sm font-medium animate-in slide-in-from-bottom-2 duration-200
+            ${t.type === 'success' ? 'bg-green-900/80 border-green-500/30 text-green-300' : 'bg-red-900/80 border-red-500/30 text-red-300'}`}>
+          {t.type === 'success' ? <Check className="h-4 w-4 shrink-0" /> : <XCircle className="h-4 w-4 shrink-0" />}
+          <span>{t.message}</span>
+          <button onClick={() => onRemove(t.id)} className="ml-2 opacity-60 hover:opacity-100"><X className="h-3.5 w-3.5" /></button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// ─── Confirm Dialog ───────────────────────────────────────────────────────────
+function ConfirmDialog({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-sm bg-[#121214] border border-white/10 rounded-2xl p-6 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+        <p className="text-sm text-white/80">{message}</p>
+        <div className="flex gap-2 justify-end">
+          <button onClick={onCancel}
+            className="px-4 py-2 text-xs border border-white/10 rounded-lg hover:bg-white/5 text-white/60 transition-colors">
+            Cancel
+          </button>
+          <button onClick={onConfirm}
+            className="px-4 py-2 text-xs bg-red-600 hover:bg-red-500 rounded-lg text-white transition-colors">
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function icpBadge(score: number | null) {
   if (score === null) return <span className="text-xs text-white/30">—</span>
@@ -40,7 +82,7 @@ function initials(lead: Lead) {
 }
 
 // ─── Sequence Picker Modal ────────────────────────────────────────────────────
-function SequenceModal({ leadId, onClose }: { leadId: string; onClose: () => void }) {
+function SequenceModal({ leadId, onClose, showToast }: { leadId: string; onClose: () => void; showToast: (type: ToastType, message: string) => void }) {
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const { data: seqs = [] } = useQuery<any[]>({
@@ -49,13 +91,20 @@ function SequenceModal({ leadId, onClose }: { leadId: string; onClose: () => voi
   })
   async function addToSeq(seqId: string) {
     setLoading(true)
-    await fetch(`/api/sequences/${seqId}/leads`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ leadIds: [leadId] }),
-    })
-    setLoading(false); setSuccess(true)
-    setTimeout(onClose, 1000)
+    try {
+      const res = await fetch(`/api/sequences/${seqId}/leads`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadIds: [leadId] }),
+      })
+      if (!res.ok) throw new Error('Failed to enroll in sequence')
+      setSuccess(true)
+      setTimeout(onClose, 1000)
+    } catch (err: any) {
+      showToast('error', err?.message ?? 'Failed to add to sequence')
+    } finally {
+      setLoading(false)
+    }
   }
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -82,7 +131,7 @@ function SequenceModal({ leadId, onClose }: { leadId: string; onClose: () => voi
 }
 
 // ─── Right Detail Panel ───────────────────────────────────────────────────────
-function LeadPanel({ lead, onClose }: { lead: Lead; onClose: () => void }) {
+function LeadPanel({ lead, onClose, showToast }: { lead: Lead; onClose: () => void; showToast: (type: ToastType, message: string) => void }) {
   const qc = useQueryClient()
   const [copied, setCopied] = useState(false)
   const [actType, setActType] = useState('NOTE')
@@ -90,7 +139,7 @@ function LeadPanel({ lead, onClose }: { lead: Lead; onClose: () => void }) {
   const [loggingAct, setLoggingAct] = useState(false)
   const [showSeqModal, setShowSeqModal] = useState(false)
 
-  const { data: activities = [] } = useQuery<Activity[]>({
+  const { data: activities = [], isLoading: activitiesLoading } = useQuery<Activity[]>({
     queryKey: ['lead-activities', lead.id],
     queryFn: () => fetch(`/api/leads/${lead.id}/activities`).then(r => r.json()),
   })
@@ -102,13 +151,21 @@ function LeadPanel({ lead, onClose }: { lead: Lead; onClose: () => void }) {
   async function logActivity() {
     if (!actNote.trim()) return
     setLoggingAct(true)
-    await fetch(`/api/leads/${lead.id}/activities`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: actType, note: actNote }),
-    })
-    qc.invalidateQueries({ queryKey: ['lead-activities', lead.id] })
-    setActNote(''); setLoggingAct(false)
+    try {
+      const res = await fetch(`/api/leads/${lead.id}/activities`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: actType, note: actNote }),
+      })
+      if (!res.ok) throw new Error('Failed to log activity')
+      qc.invalidateQueries({ queryKey: ['lead-activities', lead.id] })
+      setActNote('')
+      showToast('success', 'Activity logged')
+    } catch (err: any) {
+      showToast('error', err?.message ?? 'Failed to log activity')
+    } finally {
+      setLoggingAct(false)
+    }
   }
 
   const actTypeIcon: Record<string, React.ReactNode> = {
@@ -121,7 +178,7 @@ function LeadPanel({ lead, onClose }: { lead: Lead; onClose: () => void }) {
 
   return (
     <>
-      {showSeqModal && <SequenceModal leadId={lead.id} onClose={() => setShowSeqModal(false)} />}
+      {showSeqModal && <SequenceModal leadId={lead.id} onClose={() => setShowSeqModal(false)} showToast={showToast} />}
       <div className="w-80 shrink-0 border-l border-white/10 flex flex-col overflow-y-auto animate-in slide-in-from-right duration-200">
         {/* Header */}
         <div className="p-4 border-b border-white/10 flex items-start justify-between gap-2">
@@ -198,7 +255,11 @@ function LeadPanel({ lead, onClose }: { lead: Lead; onClose: () => void }) {
           {/* Activity Feed */}
           <div>
             <h4 className="text-xs font-medium text-white/40 uppercase tracking-wider mb-2">Activity</h4>
-            {activities.length === 0 ? (
+            {activitiesLoading ? (
+              <div className="flex items-center gap-2 text-xs text-white/30 py-2">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading activities…
+              </div>
+            ) : activities.length === 0 ? (
               <p className="text-xs text-white/20">No activity yet.</p>
             ) : (
               <div className="space-y-2">
@@ -266,7 +327,19 @@ export default function LeadsPage() {
   const [importing, setImporting] = useState(false)
   const [seqLeadId, setSeqLeadId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState<{ id: string; event: React.MouseEvent } | null>(null)
+  const [toasts, setToasts] = useState<ToastMessage[]>([])
   const PAGE_SIZE = 20
+
+  function showToast(type: ToastType, message: string) {
+    const id = ++toastId
+    setToasts(prev => [...prev, { id, type, message }])
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000)
+  }
+
+  function removeToast(id: number) {
+    setToasts(prev => prev.filter(t => t.id !== id))
+  }
 
   // Debounce search
   useEffect(() => {
@@ -325,65 +398,108 @@ export default function LeadsPage() {
     const file = e.target.files?.[0]
     if (!file) return
     setImporting(true)
-    const fd = new FormData(); fd.append('file', file)
-    await fetch('/api/leads/import', { method: 'POST', body: fd })
-    qc.invalidateQueries({ queryKey: ['leads'] })
-    setImporting(false)
-    if (fileRef.current) fileRef.current.value = ''
+    try {
+      const fd = new FormData(); fd.append('file', file)
+      const res = await fetch('/api/leads/import', { method: 'POST', body: fd })
+      if (!res.ok) throw new Error('Import failed')
+      qc.invalidateQueries({ queryKey: ['leads'] })
+    } catch (err: any) {
+      showToast('error', err?.message ?? 'Failed to import CSV')
+    } finally {
+      setImporting(false)
+      if (fileRef.current) fileRef.current.value = ''
+    }
   }
 
   async function exportLeads() {
-    const p = new URLSearchParams()
-    if (selectedListId) p.set('listId', selectedListId)
-    if (debouncedSearch) p.set('search', debouncedSearch)
-    const res = await fetch(`/api/leads/export?${p}`)
-    const blob = await res.blob()
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a'); a.href = url; a.download = 'leads.csv'; a.click()
-    URL.revokeObjectURL(url)
+    try {
+      const p = new URLSearchParams()
+      if (selectedListId) p.set('listId', selectedListId)
+      if (debouncedSearch) p.set('search', debouncedSearch)
+      const res = await fetch(`/api/leads/export?${p}`)
+      if (!res.ok) throw new Error('Export failed')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a'); a.href = url; a.download = 'leads.csv'; a.click()
+      URL.revokeObjectURL(url)
+    } catch (err: any) {
+      showToast('error', err?.message ?? 'Failed to export leads')
+    }
   }
 
   async function enrichAll() {
     setEnrichingAll(true)
-    await fetch('/api/leads/enrich', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids: filtered.map(l => l.id) }),
-    })
-    qc.invalidateQueries({ queryKey: ['leads'] })
-    setEnrichingAll(false)
+    try {
+      const res = await fetch('/api/leads/enrich', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: filtered.map(l => l.id) }),
+      })
+      if (!res.ok) throw new Error('Enrichment failed')
+      qc.invalidateQueries({ queryKey: ['leads'] })
+    } catch (err: any) {
+      showToast('error', err?.message ?? 'Failed to enrich leads')
+    } finally {
+      setEnrichingAll(false)
+    }
   }
 
   async function enrichOne(e: React.MouseEvent, leadId: string) {
     e.stopPropagation()
     setEnrichingId(leadId)
-    await fetch('/api/leads/enrich', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ids: [leadId] }),
-    })
-    qc.invalidateQueries({ queryKey: ['leads'] })
-    setEnrichingId(null)
+    try {
+      const res = await fetch('/api/leads/enrich', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [leadId] }),
+      })
+      if (!res.ok) throw new Error('Enrichment failed')
+      qc.invalidateQueries({ queryKey: ['leads'] })
+    } catch (err: any) {
+      showToast('error', err?.message ?? 'Failed to enrich lead')
+    } finally {
+      setEnrichingId(null)
+    }
   }
 
-  async function deleteLead(e: React.MouseEvent, leadId: string) {
+  function requestDeleteLead(e: React.MouseEvent, leadId: string) {
     e.stopPropagation()
-    if (!confirm('Delete this lead?')) return
+    setConfirmDelete({ id: leadId, event: e })
+  }
+
+  async function confirmDeleteLead() {
+    if (!confirmDelete) return
+    const leadId = confirmDelete.id
+    setConfirmDelete(null)
     setDeletingId(leadId)
-    await fetch(`/api/leads/${leadId}`, { method: 'DELETE' })
-    qc.invalidateQueries({ queryKey: ['leads'] })
-    if (selectedLead?.id === leadId) setSelectedLead(null)
-    setDeletingId(null)
+    try {
+      const res = await fetch(`/api/leads/${leadId}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Delete failed')
+      qc.invalidateQueries({ queryKey: ['leads'] })
+      if (selectedLead?.id === leadId) setSelectedLead(null)
+    } catch (err: any) {
+      showToast('error', err?.message ?? 'Failed to delete lead')
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   return (
     <>
-      {seqLeadId && <SequenceModal leadId={seqLeadId} onClose={() => setSeqLeadId(null)} />}
+      <Toast toasts={toasts} onRemove={removeToast} />
+      {confirmDelete && (
+        <ConfirmDialog
+          message="Are you sure you want to delete this lead?"
+          onConfirm={confirmDeleteLead}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
+      {seqLeadId && <SequenceModal leadId={seqLeadId} onClose={() => setSeqLeadId(null)} showToast={showToast} />}
       <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={importCSV} />
 
-      <div className="flex flex-1 min-h-0 gap-0">
+      <div className="flex flex-1 min-h-0 gap-0 flex-col md:flex-row">
         {/* ── Left Sidebar ──────────────────────────────────────────────────── */}
-        <div className="w-64 shrink-0 border-r border-white/10 flex flex-col">
+        <div className="md:w-64 w-full shrink-0 border-b md:border-b-0 md:border-r border-white/10 flex flex-col">
           <div className="p-4 border-b border-white/10 space-y-3">
             <div className="flex items-center justify-between">
               <h1 className="text-lg font-semibold flex items-center gap-2">
@@ -527,9 +643,9 @@ export default function LeadsPage() {
                   <tr className="border-b border-white/10 text-white/40 text-xs">
                     <th className="w-8 px-4 py-2" />
                     <th className="text-left px-4 py-2 font-medium">Name</th>
-                    <th className="text-left px-4 py-2 font-medium">Title</th>
-                    <th className="text-left px-4 py-2 font-medium">Company</th>
-                    <th className="text-left px-4 py-2 font-medium">Email</th>
+                    <th className="text-left px-4 py-2 font-medium hidden md:table-cell">Title</th>
+                    <th className="text-left px-4 py-2 font-medium hidden md:table-cell">Company</th>
+                    <th className="text-left px-4 py-2 font-medium hidden lg:table-cell">Email</th>
                     <th className="text-left px-4 py-2 font-medium">ICP</th>
                     <th className="px-4 py-2" />
                   </tr>
@@ -549,9 +665,9 @@ export default function LeadsPage() {
                       <td className="px-4 py-3 font-medium whitespace-nowrap">
                         {lead.firstName} {lead.lastName}
                       </td>
-                      <td className="px-4 py-3 text-white/50 text-xs">{lead.title ?? '—'}</td>
-                      <td className="px-4 py-3 text-white/50 text-xs">{lead.company ?? '—'}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 text-white/50 text-xs hidden md:table-cell">{lead.title ?? '—'}</td>
+                      <td className="px-4 py-3 text-white/50 text-xs hidden md:table-cell">{lead.company ?? '—'}</td>
+                      <td className="px-4 py-3 hidden lg:table-cell">
                         <div className="space-y-0.5">
                           <p className="font-mono text-xs text-white/70 truncate max-w-[180px]">{lead.email ?? '—'}</p>
                           {emailBadge(lead.emailStatus)}
@@ -580,7 +696,7 @@ export default function LeadsPage() {
                             View
                           </button>
                           <button
-                            onClick={e => deleteLead(e, lead.id)}
+                            onClick={e => requestDeleteLead(e, lead.id)}
                             disabled={deletingId === lead.id}
                             className="p-1 rounded hover:bg-red-500/10 text-red-400/60 hover:text-red-400 disabled:opacity-50"
                           >
@@ -618,7 +734,7 @@ export default function LeadsPage() {
 
         {/* ── Right Detail Panel ────────────────────────────────────────────── */}
         {selectedLead && (
-          <LeadPanel lead={selectedLead} onClose={() => setSelectedLead(null)} />
+          <LeadPanel lead={selectedLead} onClose={() => setSelectedLead(null)} showToast={showToast} />
         )}
       </div>
     </>

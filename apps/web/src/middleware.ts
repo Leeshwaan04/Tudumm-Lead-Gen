@@ -17,6 +17,10 @@ export default auth((req) => {
   if (isAuthPage && isAuth) {
     return NextResponse.redirect(new URL('/dashboard', req.url))
   }
+  // Redirect root to dashboard for authenticated users
+  if (pathname === '/' && isAuth) {
+    return NextResponse.redirect(new URL('/dashboard', req.url))
+  }
   return NextResponse.next()
 })
 
