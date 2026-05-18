@@ -1,0 +1,470 @@
+// Tudumm — SQLite-compatible schema for local development
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String?
+  name          String
+  avatarUrl     String?
+  emailVerified Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspaceMembers WorkspaceMember[]
+
+  @@map("users")
+}
+
+model Workspace {
+  id             String   @id @default(cuid())
+  name           String
+  slug           String   @unique
+  plan           String   @default("STARTER")
+  creditBalance  Int      @default(0)
+  execHoursUsed  Float    @default(0)
+  execHoursLimit Float    @default(10)
+  slots          Int      @default(3)
+  proxyGbUsed    Float    @default(0)
+  aiCredits      Int      @default(0)
+  emailCredits   Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  members             WorkspaceMember[]
+  apiKeys             ApiKey[]
+  actors              Actor[]
+  runs                Run[]
+  datasets            Dataset[]
+  schedules           Schedule[]
+  creditTransactions  CreditTransaction[]
+  leads               Lead[]
+  leadLists           LeadList[]
+  sequences           Sequence[]
+  proxyConfigs        ProxyConfig[]
+  webhooks            Webhook[]
+  linkedInSessions    LinkedInSession[]
+  enrichmentJobs      EnrichmentJob[]
+  workflowDefinitions WorkflowDefinition[]
+  playbooks           Playbook[]
+
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id          String   @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        String   @default("MEMBER")
+  joinedAt    DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@map("workspace_members")
+}
+
+model ApiKey {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  keyHash     String    @unique
+  keyPrefix   String
+  scopes      String    @default("[]")
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("api_keys")
+}
+
+model Actor {
+  id                String   @id @default(cuid())
+  workspaceId       String
+  authorId          String
+  name              String
+  slug              String   @unique
+  description       String
+  readme            String?
+  categories        String   @default("[]")
+  tags              String   @default("[]")
+  isPublic          Boolean  @default(false)
+  status            String   @default("DRAFT")
+  iconUrl           String?
+  totalRuns         Int      @default(0)
+  totalRevenueCents Int      @default(0)
+  rating            Float    @default(0)
+  ratingCount       Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace   Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  runs        Run[]
+  schedules   Schedule[]
+  inputSchema ActorInputSchema?
+
+  @@map("actors")
+}
+
+model Run {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  actorId      String
+  status       String    @default("QUEUED")
+  input        String    @default("{}")
+  output       String?
+  exitCode     Int?
+  errorMessage String?
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  durationMs   Int?
+  creditsCost  Int       @default(0)
+  createdAt    DateTime  @default(now())
+
+  workspace          Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actor              Actor              @relation(fields: [actorId], references: [id])
+  logs               RunLog[]
+  datasets           Dataset[]
+  creditTransactions CreditTransaction[]
+
+  @@map("runs")
+}
+
+model RunLog {
+  id        String   @id @default(cuid())
+  runId     String
+  timestamp DateTime @default(now())
+  level     String   @default("INFO")
+  message   String
+
+  run Run @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, timestamp])
+  @@map("run_logs")
+}
+
+model Dataset {
+  id          String   @id @default(cuid())
+  workspaceId String
+  runId       String?
+  name        String
+  itemCount   Int      @default(0)
+  sizeBytes   Int      @default(0)
+  s3Key       String
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  run       Run?      @relation(fields: [runId], references: [id])
+
+  @@map("datasets")
+}
+
+model Schedule {
+  id            String    @id @default(cuid())
+  workspaceId   String
+  actorId       String
+  name          String
+  cronExpr      String
+  timezone      String    @default("UTC")
+  status        String    @default("ACTIVE")
+  input         String    @default("{}")
+  nextRunAt     DateTime?
+  lastRunAt     DateTime?
+  lastRunStatus String?
+  createdAt     DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actor     Actor     @relation(fields: [actorId], references: [id])
+
+  @@map("schedules")
+}
+
+model CreditTransaction {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  type          String
+  amount        Int
+  balanceBefore Int
+  balanceAfter  Int
+  description   String
+  runId         String?
+  createdAt     DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  run       Run?      @relation(fields: [runId], references: [id])
+
+  @@index([workspaceId, createdAt])
+  @@map("credit_transactions")
+}
+
+model Lead {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  listId        String?
+  firstName     String?
+  lastName      String?
+  fullName      String
+  title         String?
+  company       String?
+  companyDomain String?
+  email         String?
+  emailStatus   String?
+  phone         String?
+  phoneStatus   String?
+  linkedinUrl   String?
+  twitterUrl    String?
+  instagramUrl  String?
+  githubUrl     String?
+  location      String?
+  industry      String?
+  companySize   String?
+  icpScore      Int?
+  aiSummary     String?
+  outreachAngle String?
+  source        String?
+  tags          String   @default("[]")
+  customFields  String   @default("{}")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  list           LeadList?      @relation(fields: [listId], references: [id])
+  activities     LeadActivity[]
+  sequences      SequenceLead[]
+  enrichmentJobs EnrichmentJob[]
+
+  @@index([workspaceId])
+  @@index([email])
+  @@map("leads")
+}
+
+model LeadList {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  source      String?
+  leadCount   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  leads     Lead[]
+
+  @@map("lead_lists")
+}
+
+model LeadActivity {
+  id        String   @id @default(cuid())
+  leadId    String
+  type      String
+  note      String?
+  metadata  String   @default("{}")
+  createdAt DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@map("lead_activities")
+}
+
+model Sequence {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  platform    String
+  status      String   @default("DRAFT")
+  steps       String   @default("[]")
+  leadCount   Int      @default(0)
+  sentCount   Int      @default(0)
+  replyCount  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  leads     SequenceLead[]
+
+  @@map("sequences")
+}
+
+model SequenceLead {
+  id          String    @id @default(cuid())
+  sequenceId  String
+  leadId      String
+  status      String    @default("PENDING")
+  currentStep Int       @default(0)
+  lastStepAt  DateTime?
+  nextStepAt  DateTime?
+  addedAt     DateTime  @default(now())
+
+  sequence Sequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
+  lead     Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([sequenceId, leadId])
+  @@map("sequence_leads")
+}
+
+model ProxyConfig {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  name         String
+  type         String
+  country      String?
+  provider     String    @default("internal")
+  credentials  String    @default("{}")
+  isActive     Boolean   @default(true)
+  requestCount Int       @default(0)
+  lastUsedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("proxy_configs")
+}
+
+model Webhook {
+  id              String    @id @default(cuid())
+  workspaceId     String
+  name            String
+  url             String
+  events          String    @default("[]")
+  secret          String
+  isActive        Boolean   @default(true)
+  deliveryCount   Int       @default(0)
+  lastDeliveredAt DateTime?
+  createdAt       DateTime  @default(now())
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  deliveries WebhookDelivery[]
+
+  @@map("webhooks")
+}
+
+model LinkedInSession {
+  id            String    @id @default(cuid())
+  workspaceId   String
+  alias         String
+  email         String
+  sessionCookie String
+  status        String    @default("ACTIVE")
+  connections   Int       @default(0)
+  dailyLimit    Int       @default(100)
+  dailyUsed     Int       @default(0)
+  riskScore     Int       @default(0)
+  lastUsedAt    DateTime?
+  expiresAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("linkedin_sessions")
+}
+
+model EnrichmentJob {
+  id          String   @id @default(cuid())
+  workspaceId String
+  leadId      String?
+  status      String   @default("PENDING")
+  providers   String   @default("[]")
+  results     String   @default("{}")
+  creditsUsed Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  lead      Lead?     @relation(fields: [leadId], references: [id])
+
+  @@map("enrichment_jobs")
+}
+
+model WebhookDelivery {
+  id           String    @id @default(cuid())
+  webhookId    String
+  event        String
+  payload      String
+  statusCode   Int?
+  responseBody String?
+  attempt      Int       @default(1)
+  deliveredAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  webhook Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId])
+  @@map("webhook_deliveries")
+}
+
+model WorkflowDefinition {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  nodes       String    @default("[]")
+  edges       String    @default("[]")
+  status      String    @default("DRAFT")
+  totalRuns   Int       @default(0)
+  lastRunAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace  Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  executions WorkflowExecution[]
+
+  @@map("workflow_definitions")
+}
+
+model WorkflowExecution {
+  id           String    @id @default(cuid())
+  workflowId   String
+  workspaceId  String
+  status       String    @default("RUNNING")
+  nodeStates   String    @default("{}")
+  startedAt    DateTime  @default(now())
+  finishedAt   DateTime?
+  errorMessage String?
+
+  workflow WorkflowDefinition @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+
+  @@map("workflow_executions")
+}
+
+model Playbook {
+  id          String   @id @default(cuid())
+  workspaceId String?
+  name        String
+  description String?
+  category    String
+  platform    String
+  stages      String   @default("[]")
+  isPublic    Boolean  @default(true)
+  totalRuns   Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace? @relation(fields: [workspaceId], references: [id])
+
+  @@map("playbooks")
+}
+
+model ActorInputSchema {
+  id        String   @id @default(cuid())
+  actorId   String   @unique
+  schema    String   @default("{}")
+  uiSchema  String   @default("{}")
+  version   String   @default("1.0.0")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  actor Actor @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@map("actor_input_schemas")
+}

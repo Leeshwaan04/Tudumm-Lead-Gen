@@ -1,0 +1,94 @@
+syntax = "proto3";
+package orchestrator;
+option go_package = "github.com/tudumm/orchestrator/proto";
+
+service OrchestratorService {
+  rpc ReportStatus(StatusReport) returns (StatusAck);
+  rpc StreamLog(LogEntry) returns (LogAck);
+  rpc PushDataBatch(DataBatch) returns (DataAck);
+  rpc RequestProxy(ProxyRequest) returns (ProxyResponse);
+  rpc HeartBeat(HeartBeatRequest) returns (HeartBeatResponse);
+}
+
+enum JobStatus {
+  UNKNOWN = 0;
+  STARTED = 1;
+  PROGRESS = 2;
+  COMPLETED = 3;
+  FAILED = 4;
+}
+
+enum LogLevel {
+  DEBUG = 0;
+  INFO = 1;
+  WARN = 2;
+  ERROR = 3;
+}
+
+enum ProxyType {
+  RESIDENTIAL = 0;
+  DATACENTER = 1;
+  ISP = 2;
+  MOBILE = 3;
+}
+
+message StatusReport {
+  string job_id = 1;
+  JobStatus status = 2;
+  int64 items_processed = 3;
+  int64 credits_used = 4;
+  string error_message = 5;
+  int64 timestamp = 6;
+}
+
+message StatusAck {
+  bool accepted = 1;
+}
+
+message LogEntry {
+  string job_id = 1;
+  LogLevel level = 2;
+  string message = 3;
+  int64 timestamp = 4;
+}
+
+message LogAck {
+  bool accepted = 1;
+}
+
+message DataBatch {
+  string job_id = 1;
+  string workspace_id = 2;
+  repeated bytes items = 3;
+  int32 batch_number = 4;
+}
+
+message DataAck {
+  int32 items_accepted = 1;
+}
+
+message ProxyRequest {
+  string job_id = 1;
+  ProxyType proxy_type = 2;
+  string country_code = 3;
+  string session_id = 4;
+}
+
+message ProxyResponse {
+  string proxy_url = 1;
+  string username = 2;
+  string password = 3;
+  int64 expires_at = 4;
+}
+
+message HeartBeatRequest {
+  string job_id = 1;
+  string pod_name = 2;
+  int64 memory_mb = 3;
+  float cpu_percent = 4;
+}
+
+message HeartBeatResponse {
+  bool continue = 1;
+  int32 new_timeout_secs = 2;
+}

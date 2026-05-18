@@ -1,0 +1,19 @@
+FROM node:20-alpine AS base
+RUN apk add --no-cache libc6-compat chromium nss freetype freetype-dev harfbuzz ca-certificates ttf-freefont
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV CHROMIUM_PATH=/usr/bin/chromium-browser
+WORKDIR /app
+
+FROM base AS deps
+COPY package.json pnpm-lock.yaml* ./
+RUN npm install -g pnpm && pnpm install --frozen-lockfile
+
+FROM base AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=deps /app/node_modules ./node_modules
+COPY src/workers ./src/workers
+COPY src/lib ./src/lib
+COPY prisma ./prisma
+RUN npx prisma generate
+CMD ["node", "--require", "tsx/cjs", "src/workers/start-worker.ts"]

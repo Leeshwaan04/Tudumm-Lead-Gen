@@ -1,0 +1,46 @@
+{
+  "name": "my-actor",
+  "version": "0.1.0",
+  "description": "A brief description of what this actor does",
+  "categories": ["scraping"],
+  "tags": ["web", "data"],
+  "dockerfile": "Dockerfile",
+  "memory": 1024,
+  "timeout": 3600,
+  "inputSchema": {
+    "title": "My Actor Input",
+    "type": "object",
+    "properties": {
+      "startUrl": {
+        "title": "Start URL",
+        "type": "string",
+        "description": "The URL to start scraping from",
+        "editor": "textfield"
+      },
+      "maxResults": {
+        "title": "Max Results",
+        "type": "integer",
+        "description": "Maximum number of results to return",
+        "default": 100,
+        "minimum": 1,
+        "maximum": 10000
+      },
+      "proxy": {
+        "title": "Proxy Configuration",
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["RESIDENTIAL", "DATACENTER", "ISP", "NONE"],
+            "default": "RESIDENTIAL"
+          },
+          "country": {
+            "type": "string",
+            "description": "ISO 3166-1 alpha-2 country code (e.g. US, GB, DE)"
+          }
+        }
+      }
+    },
+    "required": ["startUrl"]
+  }
+}

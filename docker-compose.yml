@@ -1,0 +1,341 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tudumm — Full-Stack Docker Compose
+# ─────────────────────────────────────────────────────────────────────────────
+
+networks:
+  tudumm-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  clickhouse_data:
+  es_data:
+  rabbitmq_data:
+
+services:
+
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tudumm
+      POSTGRES_USER: tudumm
+      POSTGRES_PASSWORD: tudumm
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - tudumm-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tudumm -d tudumm"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - tudumm-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: tudumm
+      RABBITMQ_DEFAULT_PASS: tudumm
+    ports:
+      - "5672:5672"
+      - "15672:15672"  # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - tudumm-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"  # Console UI
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address :9001
+    networks:
+      - tudumm-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    restart: unless-stopped
+    ports:
+      - "8123:8123"   # HTTP interface
+      - "9009:9000"   # Native TCP interface (mapped to 9009 to avoid conflict with minio)
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./packages/db/clickhouse/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    networks:
+      - tudumm-network
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  elasticsearch:
+    image: elasticsearch:8.15.0
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    networks:
+      - tudumm-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    restart: unless-stopped
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web UI
+    networks:
+      - tudumm-network
+
+  temporal:
+    image: temporalio/auto-setup:1.25.0
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB: postgresql
+      DB_PORT: 5432
+      POSTGRES_USER: tudumm
+      POSTGRES_PWD: tudumm
+      POSTGRES_SEEDS: postgres
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
+    ports:
+      - "7233:7233"
+    networks:
+      - tudumm-network
+
+  # ── Application Services ────────────────────────────────────────────────────
+
+  auth-service:
+    build:
+      context: ./apps/auth-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    env_file: .env
+    environment:
+      PORT: 8001
+      DATABASE_URL: postgres://tudumm:tudumm@postgres:5432/tudumm?sslmode=disable
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tudumm-network
+
+  execution-engine:
+    build:
+      context: ./apps/execution-engine
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    env_file: .env
+    environment:
+      PORT: 8002
+      DATABASE_URL: postgres://tudumm:tudumm@postgres:5432/tudumm?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://tudumm:tudumm@rabbitmq:5672/
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      TEMPORAL_HOST: temporal:7233
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock  # Docker-in-Docker execution
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - tudumm-network
+
+  billing-service:
+    build:
+      context: ./apps/billing-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8003:8003"
+    env_file: .env
+    environment:
+      PORT: 8003
+      DATABASE_URL: postgres://tudumm:tudumm@postgres:5432/tudumm?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://tudumm:tudumm@rabbitmq:5672/
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - tudumm-network
+
+  storage-service:
+    build:
+      context: ./apps/storage-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8004:8004"
+    env_file: .env
+    environment:
+      PORT: 8004
+      DATABASE_URL: postgres://tudumm:tudumm@postgres:5432/tudumm?sslmode=disable
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      CLICKHOUSE_DSN: http://clickhouse:8123
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - tudumm-network
+
+  marketplace-service:
+    build:
+      context: ./apps/marketplace-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8005:8005"
+    env_file: .env
+    environment:
+      PORT: 8005
+      DATABASE_URL: postgres://tudumm:tudumm@postgres:5432/tudumm?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      ELASTICSEARCH_URL: http://elasticsearch:9200
+    depends_on:
+      postgres:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - tudumm-network
+
+  scheduling-service:
+    build:
+      context: ./apps/scheduling-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8006:8006"
+    env_file: .env
+    environment:
+      PORT: 8006
+      DATABASE_URL: postgres://tudumm:tudumm@postgres:5432/tudumm?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://tudumm:tudumm@rabbitmq:5672/
+      TEMPORAL_HOST: temporal:7233
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - tudumm-network
+
+  api-gateway:
+    build:
+      context: ./apps/api-gateway
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    env_file: .env
+    environment:
+      PORT: 4000
+      AUTH_SERVICE_URL: http://auth-service:8001
+      EXECUTION_SERVICE_URL: http://execution-engine:8002
+      BILLING_SERVICE_URL: http://billing-service:8003
+      STORAGE_SERVICE_URL: http://storage-service:8004
+      MARKETPLACE_SERVICE_URL: http://marketplace-service:8005
+      SCHEDULING_SERVICE_URL: http://scheduling-service:8006
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - auth-service
+      - execution-engine
+      - billing-service
+      - storage-service
+      - marketplace-service
+      - scheduling-service
+    networks:
+      - tudumm-network
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file: .env
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+      NODE_ENV: production
+    depends_on:
+      - api-gateway
+    networks:
+      - tudumm-network

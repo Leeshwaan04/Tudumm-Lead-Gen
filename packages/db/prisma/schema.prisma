@@ -1,0 +1,577 @@
+// Tudumm — Unified Web Automation + Proxy + Developer Marketplace
+// Prisma Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────
+
+enum PlanType {
+  STARTER
+  GROW
+  SCALE
+  ENTERPRISE
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum ActorStatus {
+  DRAFT
+  PUBLISHED
+  DEPRECATED
+}
+
+enum RunStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  TIMEOUT
+}
+
+enum TriggerType {
+  CRON
+  WEBHOOK
+  ACTOR_COMPLETION
+  MANUAL
+}
+
+enum ScheduleStatus {
+  ACTIVE
+  PAUSED
+  DELETED
+}
+
+enum ProxyType {
+  RESIDENTIAL
+  DATACENTER
+  ISP
+  MOBILE
+}
+
+enum TransactionType {
+  DEBIT
+  CREDIT
+  REFUND
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+}
+
+enum IntegrationType {
+  HUBSPOT
+  SALESFORCE
+  PIPEDRIVE
+  ZAPIER
+  MAKE
+  N8N
+  SLACK
+  WEBHOOK
+}
+
+enum LogLevel {
+  DEBUG
+  INFO
+  WARN
+  ERROR
+}
+
+enum PayoutStatus {
+  PENDING
+  PROCESSING
+  PAID
+  FAILED
+}
+
+enum QueueItemStatus {
+  PENDING
+  RUNNING
+  HANDLED
+  FAILED
+}
+
+// ─────────────────────────────────────────────
+// Auth & Workspaces
+// ─────────────────────────────────────────────
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  passwordHash  String?
+  name          String
+  avatarUrl     String?
+  emailVerified Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspaceMembers WorkspaceMember[]
+  oauthAccounts    OAuthAccount[]
+  actorRatings     ActorRating[]
+  authoredActors   Actor[]           @relation("ActorAuthor")
+  developerPayouts DeveloperPayout[]
+
+  @@map("users")
+}
+
+model Workspace {
+  id             String   @id @default(cuid())
+  name           String
+  slug           String   @unique
+  plan           PlanType @default(STARTER)
+  creditBalance  Int      @default(0)
+  execHoursUsed  Float    @default(0)
+  execHoursLimit Float    @default(10)
+  slots          Int      @default(3)
+  proxyGbUsed    Float    @default(0)
+  aiCredits      Int      @default(0)
+  emailCredits   Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  members          WorkspaceMember[]
+  apiKeys          ApiKey[]
+  actors           Actor[]
+  runs             Run[]
+  workflows        Workflow[]
+  schedules        Schedule[]
+  datasets         Dataset[]
+  kvStores         KVStore[]
+  requestQueues    RequestQueue[]
+  proxySessions    ProxySession[]
+  creditTransactions CreditTransaction[]
+  invoices         Invoice[]
+  integrations     Integration[]
+  webhooks         Webhook[]
+  billableEvents   BillableEvent[]
+
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  id          String     @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        MemberRole @default(MEMBER)
+  joinedAt    DateTime   @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@map("workspace_members")
+}
+
+model ApiKey {
+  id          String    @id @default(cuid())
+  workspaceId String
+  name        String
+  keyHash     String    @unique
+  keyPrefix   String
+  scopes      String[]
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("api_keys")
+}
+
+model OAuthAccount {
+  id                String  @id @default(cuid())
+  userId            String
+  provider          String
+  providerAccountId String
+  accessToken       String?
+  refreshToken      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("oauth_accounts")
+}
+
+// ─────────────────────────────────────────────
+// Actors & Marketplace
+// ─────────────────────────────────────────────
+
+model Actor {
+  id                String      @id @default(cuid())
+  workspaceId       String
+  authorId          String
+  name              String
+  slug              String      @unique
+  description       String
+  readme            String?     @db.Text
+  categories        String[]
+  tags              String[]
+  isPublic          Boolean     @default(false)
+  status            ActorStatus @default(DRAFT)
+  iconUrl           String?
+  totalRuns         Int         @default(0)
+  totalRevenueCents Int         @default(0)
+  rating            Decimal     @default(0) @db.Decimal(3, 2)
+  ratingCount       Int         @default(0)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  workspace      Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  author         User             @relation("ActorAuthor", fields: [authorId], references: [id])
+  versions       ActorVersion[]
+  ratings        ActorRating[]
+  runs           Run[]
+  schedules      Schedule[]
+  payouts        DeveloperPayout[]
+  billableEvents BillableEvent[]
+
+  @@map("actors")
+}
+
+model ActorVersion {
+  id          String   @id @default(cuid())
+  actorId     String
+  version     String
+  dockerImage String
+  inputSchema Json
+  changeLog   String?
+  isLatest    Boolean  @default(false)
+  publishedAt DateTime @default(now())
+
+  actor Actor @relation(fields: [actorId], references: [id], onDelete: Cascade)
+  runs  Run[]
+
+  @@unique([actorId, version])
+  @@map("actor_versions")
+}
+
+model ActorRating {
+  id        String   @id @default(cuid())
+  actorId   String
+  userId    String
+  rating    Int      // 1–5
+  review    String?
+  createdAt DateTime @default(now())
+
+  actor Actor @relation(fields: [actorId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([actorId, userId])
+  @@map("actor_ratings")
+}
+
+model DeveloperPayout {
+  id                String      @id @default(cuid())
+  actorId           String
+  authorId          String
+  periodStart       DateTime
+  periodEnd         DateTime
+  totalRevenueCents Int
+  platformFeeCents  Int
+  payoutCents       Int
+  stripeTransferId  String?
+  status            PayoutStatus @default(PENDING)
+  settledAt         DateTime?
+
+  actor  Actor @relation(fields: [actorId], references: [id])
+  author User  @relation(fields: [authorId], references: [id])
+
+  @@map("developer_payouts")
+}
+
+model BillableEvent {
+  id             String   @id @default(cuid())
+  actorId        String
+  runId          String
+  workspaceId    String
+  eventType      String
+  units          Int
+  unitCostMicros Int
+  totalCostMicros Int
+  recordedAt     DateTime @default(now())
+
+  actor     Actor     @relation(fields: [actorId], references: [id])
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+
+  @@map("billable_events")
+}
+
+// ─────────────────────────────────────────────
+// Execution
+// ─────────────────────────────────────────────
+
+model Run {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  actorId        String
+  actorVersionId String?
+  status         RunStatus @default(QUEUED)
+  input          Json      @default("{}")
+  output         Json?
+  exitCode       Int?
+  errorMessage   String?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  durationMs     Int?
+  memoryMb       Int?
+  cpuSeconds     Float?
+  creditsCost    Int       @default(0)
+  createdAt      DateTime  @default(now())
+
+  workspace    Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actor        Actor         @relation(fields: [actorId], references: [id])
+  actorVersion ActorVersion? @relation(fields: [actorVersionId], references: [id])
+  logs         RunLog[]
+  datasets     Dataset[]
+  creditTransactions CreditTransaction[]
+
+  @@map("runs")
+}
+
+model RunLog {
+  id        String   @id @default(cuid())
+  runId     String
+  timestamp DateTime @default(now())
+  level     LogLevel @default(INFO)
+  message   String
+  metadata  Json?
+
+  run Run @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, timestamp])
+  @@map("run_logs")
+}
+
+// ─────────────────────────────────────────────
+// Workflows & Scheduling
+// ─────────────────────────────────────────────
+
+model Workflow {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  dag         Json     // Directed Acyclic Graph definition
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  schedules Schedule[]
+
+  @@map("workflows")
+}
+
+model Schedule {
+  id            String         @id @default(cuid())
+  workspaceId   String
+  actorId       String
+  workflowId    String?
+  name          String
+  cronExpr      String
+  timezone      String         @default("UTC")
+  triggerType   TriggerType    @default(CRON)
+  status        ScheduleStatus @default(ACTIVE)
+  input         Json           @default("{}")
+  nextRunAt     DateTime?
+  lastRunAt     DateTime?
+  lastRunStatus RunStatus?
+  createdAt     DateTime       @default(now())
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  actor     Actor      @relation(fields: [actorId], references: [id])
+  workflow  Workflow?  @relation(fields: [workflowId], references: [id])
+
+  @@map("schedules")
+}
+
+// ─────────────────────────────────────────────
+// Storage
+// ─────────────────────────────────────────────
+
+model Dataset {
+  id          String   @id @default(cuid())
+  workspaceId String
+  runId       String?
+  name        String
+  itemCount   Int      @default(0)
+  sizeBytes   BigInt   @default(0)
+  s3Key       String
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  run       Run?      @relation(fields: [runId], references: [id])
+
+  @@map("datasets")
+}
+
+model KVStore {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  itemCount   Int      @default(0)
+  sizeBytes   BigInt   @default(0)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  entries   KVEntry[]
+
+  @@unique([workspaceId, name])
+  @@map("kv_stores")
+}
+
+model KVEntry {
+  id          String   @id @default(cuid())
+  storeId     String
+  key         String
+  contentType String   @default("application/octet-stream")
+  sizeBytes   BigInt   @default(0)
+  s3Key       String
+  updatedAt   DateTime @updatedAt
+
+  store KVStore @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, key])
+  @@map("kv_entries")
+}
+
+model RequestQueue {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  name         String
+  pendingCount Int      @default(0)
+  handledCount Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  workspace Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  items     RequestQueueItem[]
+
+  @@unique([workspaceId, name])
+  @@map("request_queues")
+}
+
+model RequestQueueItem {
+  id        String          @id @default(cuid())
+  queueId   String
+  url       String
+  uniqueKey String
+  status    QueueItemStatus @default(PENDING)
+  retries   Int             @default(0)
+  addedAt   DateTime        @default(now())
+  handledAt DateTime?
+
+  queue RequestQueue @relation(fields: [queueId], references: [id], onDelete: Cascade)
+
+  @@unique([queueId, uniqueKey])
+  @@index([queueId, status])
+  @@map("request_queue_items")
+}
+
+// ─────────────────────────────────────────────
+// Proxy
+// ─────────────────────────────────────────────
+
+model ProxySession {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  proxyType    ProxyType
+  ip           String
+  country      String?
+  city         String?
+  targetDomain String?
+  stickyUntil  DateTime?
+  createdAt    DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("proxy_sessions")
+}
+
+// ─────────────────────────────────────────────
+// Billing
+// ─────────────────────────────────────────────
+
+model CreditTransaction {
+  id            String          @id @default(cuid())
+  workspaceId   String
+  type          TransactionType
+  amount        Int
+  balanceBefore Int
+  balanceAfter  Int
+  description   String
+  runId         String?
+  metadata      Json            @default("{}")
+  createdAt     DateTime        @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  run       Run?      @relation(fields: [runId], references: [id])
+
+  @@index([workspaceId, createdAt])
+  @@map("credit_transactions")
+}
+
+model Invoice {
+  id              String        @id @default(cuid())
+  workspaceId     String
+  stripeInvoiceId String        @unique
+  amountCents     Int
+  currency        String        @default("usd")
+  status          InvoiceStatus @default(DRAFT)
+  periodStart     DateTime
+  periodEnd       DateTime
+  pdfUrl          String?
+  paidAt          DateTime?
+  createdAt       DateTime      @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("invoices")
+}
+
+// ─────────────────────────────────────────────
+// Integrations
+// ─────────────────────────────────────────────
+
+model Integration {
+  id          String          @id @default(cuid())
+  workspaceId String
+  type        IntegrationType
+  name        String
+  config      Json            @default("{}")
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("integrations")
+}
+
+model Webhook {
+  id          String   @id @default(cuid())
+  workspaceId String
+  url         String
+  events      String[]
+  secret      String
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("webhooks")
+}

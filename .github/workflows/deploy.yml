@@ -1,0 +1,57 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches: [main]
+
+env:
+  AWS_REGION: ap-south-1
+  ECR_WEB_REPO: tudumm-web
+  ECR_WORKER_REPO: tudumm-worker
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build & push web image
+        run: |
+          docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_WEB_REPO }}:${{ github.sha }} -f apps/web/Dockerfile apps/web
+          docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_WEB_REPO }}:${{ github.sha }}
+          docker tag ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_WEB_REPO }}:${{ github.sha }} ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_WEB_REPO }}:latest
+          docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_WEB_REPO }}:latest
+
+      - name: Build & push worker image
+        run: |
+          docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_WORKER_REPO }}:${{ github.sha }} -f apps/web/Dockerfile.worker apps/web
+          docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_WORKER_REPO }}:${{ github.sha }}
+          docker tag ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_WORKER_REPO }}:${{ github.sha }} ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_WORKER_REPO }}:latest
+          docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_WORKER_REPO }}:latest
+
+      - name: Deploy App Runner
+        run: |
+          aws apprunner start-deployment --service-arn ${{ secrets.APPRUNNER_SERVICE_ARN }}
+
+      - name: Update ECS worker service
+        run: |
+          aws ecs update-service --cluster tudumm-workers --service tudumm-worker --force-new-deployment
+
+      - name: Run DB migrations
+        run: |
+          cd apps/web
+          DATABASE_URL=${{ secrets.DATABASE_URL }} npx prisma migrate deploy
