@@ -19,11 +19,7 @@ WORKDIR /app
 
 COPY --from=builder /app/server ./server
 
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
-USER appuser
-
 EXPOSE 8005
 
-  CMD wget --spider -q http://localhost:8005/healthz || exit 1
 
 ENTRYPOINT ["./server"]

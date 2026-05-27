@@ -16,11 +16,8 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 FROM gcr.io/distroless/static:nonroot
 
 
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
-
 COPY --from=builder /app/server /app/server
 
-USER appuser
 
 EXPOSE 8080
 
