@@ -10,7 +10,7 @@ RUN go mod download
 
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -ldflags="-w -s" -o /app/server ./cmd/main.go
+    go build -ldflags="-w -s" -o /app/server ./cmd/orchestrator/main.go
 
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
 FROM gcr.io/distroless/static:nonroot
