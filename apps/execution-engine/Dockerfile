@@ -3,7 +3,7 @@ FROM golang:1.23-alpine AS builder
 
 WORKDIR /build
 
-RUN apk add --no-cache git ca-certificates tzdata
+RUN apk add --no-cache git
 
 COPY go.mod go.sum ./
 RUN go mod download
@@ -16,7 +16,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
 FROM alpine:3.20
 
 # Docker CLI is required for Docker-in-Docker actor execution
-RUN apk add --no-cache ca-certificates tzdata wget docker-cli
+RUN apk add --no-cache ca-certificates docker-cli
 
 WORKDIR /app
 
@@ -27,7 +27,5 @@ COPY --from=builder /app/server ./server
 
 EXPOSE 8002
 
-HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget --spider -q http://localhost:8002/healthz || exit 1
 
 ENTRYPOINT ["./server"]

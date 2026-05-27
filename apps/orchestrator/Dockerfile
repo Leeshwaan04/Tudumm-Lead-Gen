@@ -3,7 +3,7 @@ FROM golang:1.23-alpine AS builder
 
 WORKDIR /build
 
-RUN apk add --no-cache git ca-certificates tzdata
+RUN apk add --no-cache git
 
 COPY go.mod go.sum ./
 RUN go mod download
@@ -13,9 +13,8 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -ldflags="-w -s" -o /app/server ./cmd/main.go
 
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
-FROM alpine:3.20
+FROM gcr.io/distroless/static:nonroot
 
-RUN apk add --no-cache ca-certificates tzdata wget
 
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
@@ -25,7 +24,5 @@ USER appuser
 
 EXPOSE 8080
 
-HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
-  CMD wget --spider -q http://localhost:8080/health || exit 1
 
 CMD ["/app/server"]
