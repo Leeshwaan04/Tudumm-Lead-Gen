@@ -121,8 +121,8 @@ func (s *PostgresStore) ListJobs(ctx context.Context, workspaceID uuid.UUID, lim
 func (s *PostgresStore) GetWorkspace(ctx context.Context, id uuid.UUID) (*models.Workspace, error) {
 	var ws models.Workspace
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, name, plan, credits FROM workspaces WHERE id=$1`, id,
-	).Scan(&ws.ID, &ws.Name, &ws.Plan, &ws.Credits)
+		SELECT id, name, plan, credit_balance FROM workspaces WHERE id=$1`, id,
+	).Scan(&ws.ID, &ws.Name, &ws.Plan, &ws.CreditBalance)
 	if err == pgx.ErrNoRows {
 		return nil, fmt.Errorf("workspace %s not found", id)
 	}

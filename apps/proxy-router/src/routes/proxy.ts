@@ -7,7 +7,7 @@ import { ProxyPool } from '../services/ProxyPool';
 import { GeoRouter } from '../services/GeoRouter';
 import { UsageMetering } from '../services/UsageMetering';
 
-const router = Router();
+const router: ReturnType<typeof Router> = Router();
 const logger = pino({ name: 'proxy-routes' });
 const pool = ProxyPool.getInstance();
 const geoRouter = new GeoRouter();

@@ -23,7 +23,7 @@ export async function applyAntiDetection(page: Page): Promise<void> {
     // 4. Realistic plugins
     Object.defineProperty(navigator, 'plugins', {
       get: () => {
-        const plugins: any[] = [
+        const plugins: any[] & { item?: (i: number) => any; namedItem?: (n: string) => any; refresh?: () => void } = [
           { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer', description: 'Portable Document Format', length: 1 },
           { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai', description: '', length: 1 },
           { name: 'Native Client', filename: 'internal-nacl-plugin', description: '', length: 2 },
