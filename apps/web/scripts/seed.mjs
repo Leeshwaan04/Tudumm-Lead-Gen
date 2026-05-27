@@ -5,9 +5,7 @@ import { createRequire } from 'module'
 const require = createRequire(import.meta.url)
 const bcrypt = require('bcryptjs')
 
-const prisma = new PrismaClient({
-  datasources: { db: { url: 'file:./dev.db' } }
-})
+const prisma = new PrismaClient()
 
 const DEMO_ACTORS = [
   { name: 'LinkedIn Profile Scraper', slug: 'linkedin-profile-scraper', description: 'Extract LinkedIn profiles at scale. Get name, title, company, email, and more from search results.', categories: JSON.stringify(['Social Media', 'Lead Gen']), tags: JSON.stringify(['linkedin', 'profiles', 'b2b']), isPublic: true, status: 'PUBLISHED', totalRuns: 284920, rating: 4.8, ratingCount: 1243 },
