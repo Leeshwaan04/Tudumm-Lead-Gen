@@ -1,36 +1,35 @@
 # ── Stage 1: Install dependencies ─────────────────────────────────────────────
-# Build context is the MONOREPO ROOT (not apps/web).
-# In deploy.yml: docker build -f apps/web/Dockerfile .
+# Build context must be the MONOREPO ROOT
 FROM node:20-alpine AS deps
 
 RUN apk add --no-cache libc6-compat
-RUN corepack enable pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR /app
 
-# Copy monorepo manifests so pnpm can hoist deps correctly
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml* ./
+COPY package.json pnpm-lock.yaml ./
+COPY pnpm-workspace.yaml* ./
 COPY apps/web/package.json ./apps/web/
 COPY packages/ ./packages/
 
-RUN pnpm install --frozen-lockfile --filter @tudumm/web...
+RUN pnpm install --frozen-lockfile
 
-# ── Stage 2: Build the Next.js app ────────────────────────────────────────────
+# ── Stage 2: Build ────────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
 
-RUN corepack enable pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR /app
 
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/apps/web/package.json ./apps/web/package.json
+COPY --from=deps /app ./
 
 COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
+# Dummy DATABASE_URL so prisma generate doesn't fail at build time
+ENV DATABASE_URL=postgresql://localhost:5432/dummy
 
-# Generate Prisma client then build
 RUN cd apps/web && npx prisma generate
 RUN pnpm --filter @tudumm/web build
 
@@ -43,7 +42,7 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN addgroup --system --gid 1001 nodejs \
- && adduser  --system --uid 1001 nextjs
+ && adduser --system --uid 1001 nextjs
 
 COPY --from=builder /app/apps/web/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
