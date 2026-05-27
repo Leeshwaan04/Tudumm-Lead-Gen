@@ -4,7 +4,7 @@ import { BrowserPool } from '../services/BrowserPool';
 import { AntiBotEngine } from '../services/AntiBotEngine';
 import { UnlockerService } from '../services/UnlockerService';
 
-const router = Router();
+const router: ReturnType<typeof Router> = Router();
 const logger = pino({ name: 'browser-routes' });
 const pool = BrowserPool.getInstance();
 const antiBot = new AntiBotEngine();

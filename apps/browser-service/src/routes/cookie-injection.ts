@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import pino from 'pino';
 import { BrowserPool } from '../services/BrowserPool';
 
-const router = Router();
+const router: ReturnType<typeof Router> = Router();
 const logger = pino({ name: 'cookie-injection' });
 const pool = BrowserPool.getInstance();
 

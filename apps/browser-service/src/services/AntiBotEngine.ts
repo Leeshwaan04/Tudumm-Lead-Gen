@@ -188,7 +188,8 @@ export class AntiBotEngine {
       ({ noise, vendor, renderer }: { noise: number; vendor: string; renderer: string }) => {
         // Canvas noise
         const originalGetContext = HTMLCanvasElement.prototype.getContext;
-        HTMLCanvasElement.prototype.getContext = function (
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (HTMLCanvasElement.prototype as any).getContext = function (
           this: HTMLCanvasElement,
           type: string,
           ...args: unknown[]
