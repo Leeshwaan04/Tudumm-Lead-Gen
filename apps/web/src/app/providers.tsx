@@ -1,17 +1,21 @@
 "use client";
 
-import React from "react";
-import { QueryClientProvider } from "@tanstack/react-query";
-import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import React, { useState } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SessionProvider } from "next-auth/react";
-import { queryClient } from "@/lib/api";
+
+function makeQueryClient() {
+  return new QueryClient({
+    defaultOptions: { queries: { staleTime: 60 * 1000, retry: 1 } },
+  });
+}
 
 export function Providers({ children }: { children: React.ReactNode }) {
+  const [queryClient] = useState(() => makeQueryClient());
   return (
     <SessionProvider>
       <QueryClientProvider client={queryClient}>
         {children}
-        <ReactQueryDevtools initialIsOpen={false} />
       </QueryClientProvider>
     </SessionProvider>
   );
