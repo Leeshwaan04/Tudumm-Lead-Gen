@@ -324,18 +324,94 @@ services:
     networks:
       - tudumm-network
 
+  enrichment-service:
+    build:
+      context: ./apps/enrichment-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8007:8000"
+    env_file: .env
+    environment:
+      PORT: 8000
+      REDIS_URL: redis://redis:6379
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - tudumm-network
+
+  browser-service:
+    build:
+      context: ./apps/browser-service
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    env_file: .env
+    environment:
+      PORT: 3001
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - tudumm-network
+
+  proxy-router:
+    build:
+      context: ./apps/proxy-router
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    env_file: .env
+    environment:
+      PORT: 3002
+    networks:
+      - tudumm-network
+
+  orchestrator:
+    build:
+      context: ./apps/orchestrator
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8008:8080"
+    env_file: .env
+    environment:
+      PORT: 8080
+      DATABASE_URL: postgres://tudumm:tudumm@postgres:5432/tudumm?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://tudumm:tudumm@rabbitmq:5672/
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - tudumm-network
+
   web:
     build:
-      context: ./apps/web
-      dockerfile: Dockerfile
+      # Build context must be monorepo root (Dockerfile copies pnpm-workspace.yaml etc.)
+      context: .
+      dockerfile: apps/web/Dockerfile
     restart: unless-stopped
     ports:
       - "3000:3000"
     env_file: .env
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:4000
+      NEXT_PUBLIC_API_URL: http://localhost:3000
       NODE_ENV: production
+      DATABASE_URL: postgres://tudumm:tudumm@postgres:5432/tudumm?sslmode=disable
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
     depends_on:
-      - api-gateway
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - tudumm-network

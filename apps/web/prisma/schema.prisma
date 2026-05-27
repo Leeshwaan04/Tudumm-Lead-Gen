@@ -1,11 +1,12 @@
-// Tudumm — SQLite-compatible schema for local development
+// Tudumm — PostgreSQL schema (Railway/production)
+// For local dev: DATABASE_URL=postgresql://tudumm:tudumm@localhost:5432/tudumm
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
