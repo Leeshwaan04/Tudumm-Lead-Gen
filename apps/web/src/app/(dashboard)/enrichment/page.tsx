@@ -53,7 +53,7 @@ function SequenceModal({ leadIds, onClose }: { leadIds: string[]; onClose: () =>
       <div className="w-full max-w-sm bg-[#121214] border border-white/10 rounded-2xl p-5 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="font-semibold">Add to Sequence</h3>
-          <button onClick={onClose}><X className="h-4 w-4 text-white/40" /></button>
+          <button type="button" aria-label="Close" onClick={onClose}><X className="h-4 w-4 text-white/40" /></button>
         </div>
         {done ? <p className="text-xs text-green-400 flex items-center gap-1"><Check className="h-3.5 w-3.5" /> Added!</p> : (
           <div className="space-y-2">
@@ -189,7 +189,7 @@ export default function EnrichmentPage() {
   return (
     <>
       {showSeqModal && displayLead && <SequenceModal leadIds={[displayLead.id]} onClose={() => setShowSeqModal(false)} />}
-      <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={importCSV} />
+      <input ref={fileRef} type="file" accept=".csv" className="hidden" aria-label="Import CSV file" onChange={importCSV} />
 
       <div className="flex flex-1 min-h-0 gap-0 flex-col sm:flex-row">
         {/* ── Left: lead list ──────────────────────────────────────────────── */}
@@ -244,8 +244,9 @@ export default function EnrichmentPage() {
                 <button onClick={() => fileRef.current?.click()} className="text-violet-400 underline">Import CSV</button>
               </div>
             ) : leadsRaw.map(lead => (
-              <button key={lead.id} onClick={() => setSelected(lead)}
-                className={`w-full text-left p-3 border-b border-white/5 hover:bg-white/3 transition-colors ${displayLead?.id === lead.id ? 'bg-white/5 border-l-2 border-l-violet-500' : ''}`}
+              <div key={lead.id} role="button" tabIndex={0} onClick={() => setSelected(lead)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') setSelected(lead) }}
+                className={`w-full text-left p-3 border-b border-white/5 hover:bg-white/3 transition-colors cursor-pointer ${displayLead?.id === lead.id ? 'bg-white/5 border-l-2 border-l-violet-500' : ''}`}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -276,7 +277,7 @@ export default function EnrichmentPage() {
                     {enrichingId === lead.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Enrich'}
                   </button>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
 
