@@ -2,7 +2,8 @@
 // For local dev: DATABASE_URL=postgresql://tudumm:tudumm@localhost:5432/tudumm
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x", "linux-musl"]
 }
 
 datasource db {

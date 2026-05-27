@@ -2,7 +2,7 @@
 # Build context must be the MONOREPO ROOT
 FROM node:20-alpine AS deps
 
-RUN apk add --no-cache libc6-compat
+RUN apk add --no-cache libc6-compat openssl openssl-dev
 RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR /app
@@ -34,6 +34,8 @@ RUN pnpm --filter tudumm-web build
 
 # ── Stage 3: Production runner ────────────────────────────────────────────────
 FROM node:20-alpine AS runner
+
+RUN apk add --no-cache openssl
 
 WORKDIR /app
 
