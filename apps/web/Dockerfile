@@ -7,8 +7,7 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml ./
-COPY pnpm-workspace.yaml* ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json ./apps/web/
 COPY packages/ ./packages/
 
@@ -31,7 +30,7 @@ ENV NODE_ENV=production
 ENV DATABASE_URL=postgresql://localhost:5432/dummy
 
 RUN cd apps/web && npx prisma generate
-RUN pnpm --filter @tudumm/web build
+RUN pnpm --filter tudumm-web build
 
 # ── Stage 3: Production runner ────────────────────────────────────────────────
 FROM node:20-alpine AS runner
