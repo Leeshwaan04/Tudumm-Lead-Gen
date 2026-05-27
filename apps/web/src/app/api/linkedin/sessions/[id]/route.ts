@@ -2,6 +2,23 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
 
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const session = await auth()
+    const workspaceId = (session as any)?.workspaceId
+    if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { id } = await params
+    const record = await prisma.linkedInSession.findFirst({ where: { id, workspaceId } })
+    if (!record) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+    const { sessionCookie, ...recordWithout } = record
+    return NextResponse.json({ ...recordWithout, cookieSet: true })
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 })
+  }
+}
+
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
@@ -22,7 +39,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (result.count === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
     const updated = await prisma.linkedInSession.findUnique({ where: { id } })
-    return NextResponse.json(updated)
+    const { sessionCookie: _cookie, ...updatedWithout } = updated!
+    return NextResponse.json({ ...updatedWithout, cookieSet: true })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }

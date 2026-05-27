@@ -186,7 +186,7 @@ export default function ProxyPage() {
 
   const { data: proxies = [], isLoading } = useQuery<ProxyConfig[]>({
     queryKey: ['proxy'],
-    queryFn: () => fetch('/api/proxy').then((r) => r.json()),
+    queryFn: () => fetch('/api/proxy').then((r) => r.json()).then((d) => d.configs ?? d),
   });
 
   async function addProxy(data: Record<string, string>) {

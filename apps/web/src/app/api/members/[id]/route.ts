@@ -12,6 +12,16 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const { role } = await req.json()
     if (!role) return NextResponse.json({ error: 'role required' }, { status: 400 })
 
+    const callerMember = await prisma.workspaceMember.findFirst({
+      where: { workspaceId, userId: (session as any).user?.id! }
+    })
+    if (!callerMember || (callerMember.role !== 'OWNER' && callerMember.role !== 'ADMIN')) {
+      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+    }
+    if (role === 'OWNER' && callerMember.role !== 'OWNER') {
+      return NextResponse.json({ error: 'Only owners can assign owner role' }, { status: 403 })
+    }
+
     const result = await prisma.workspaceMember.updateMany({
       where: { id, workspaceId },
       data: { role },
@@ -35,9 +45,19 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id } = await params
+
+    const callerMember = await prisma.workspaceMember.findFirst({
+      where: { workspaceId, userId: (session as any).user?.id! }
+    })
+    if (!callerMember || (callerMember.role !== 'OWNER' && callerMember.role !== 'ADMIN')) {
+      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+    }
+
     const member = await prisma.workspaceMember.findFirst({ where: { id, workspaceId } })
     if (!member) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    if (member.role === 'OWNER') return NextResponse.json({ error: 'Cannot remove owner' }, { status: 403 })
+    if (member.role === 'OWNER' && callerMember.role !== 'OWNER') {
+      return NextResponse.json({ error: 'Only owners can remove another owner' }, { status: 403 })
+    }
 
     await prisma.workspaceMember.delete({ where: { id } })
     return NextResponse.json({ ok: true })

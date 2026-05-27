@@ -2,7 +2,7 @@
 import React, { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
-import { CreditBalanceCard, StatCard } from '@/components/dashboard/CreditBalanceCard'
+import { StatCard } from '@/components/dashboard/CreditBalanceCard'
 import { UsageChart } from '@/components/dashboard/UsageChart'
 import { Button } from '@/components/ui/button'
 import {
@@ -217,15 +217,11 @@ export default function DashboardPage() {
   const usageData: UsageDataPoint[] = Array.isArray(usageRaw) ? usageRaw : []
   const hasEnoughChartData = usageData.length >= 2
 
-  const balance = workspace ? {
-    remaining: workspace.creditBalance ?? 0,
-    used: (workspace.execHoursUsed ?? 0) * 100,
-    total: Math.max((workspace.creditBalance ?? 0) + (workspace.execHoursUsed ?? 0) * 100, 50000),
-    resetDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
-    plan: (workspace.plan?.toLowerCase() ?? 'starter') as any,
-  } : null
-
-  // Quick actions: navigate directly to the relevant page instead of opening a modal
+  const quickActionColorMap: Record<string, { bg: string; text: string }> = {
+    blue: { bg: 'bg-blue-500/10', text: 'text-blue-500' },
+    pink: { bg: 'bg-pink-500/10', text: 'text-pink-500' },
+    yellow: { bg: 'bg-yellow-500/10', text: 'text-yellow-500' },
+  }
   const quickActions = [
     { label: 'Scrape LinkedIn Profiles', href: '/linkedin', color: 'blue' },
     { label: 'Instagram Follower Export', href: '/actors', color: 'pink' },
@@ -248,7 +244,7 @@ export default function DashboardPage() {
                 workspace?.name ?? 'Workspace Overview'
               )}
             </h1>
-            <p className="text-muted-foreground mt-1">Track your automation performance and credit usage.</p>
+            <p className="text-muted-foreground mt-1">Track your automation performance and team activity.</p>
           </div>
           <div className="flex items-center gap-3">
             <Link href="/workflows">
@@ -278,7 +274,14 @@ export default function DashboardPage() {
             </>
           ) : (
             <>
-              {balance && <CreditBalanceCard balance={balance} />}
+              <StatCard
+                title="Total Runs"
+                value={runsLoading ? '—' : (Array.isArray(runsRaw) ? runsRaw.length : 0).toString()}
+                subtitle="all time"
+                trend={12}
+                icon={Cpu}
+                iconColor="text-violet-400"
+              />
               <StatCard
                 title="Proxy Traffic"
                 value={`${workspace?.proxyGbUsed ?? 0} GB`}
@@ -295,13 +298,13 @@ export default function DashboardPage() {
                 iconColor="text-blue-400"
               />
               <StatCard
-                title="Total Runs"
-                value={runsLoading ? '—' : (Array.isArray(runsRaw) ? runsRaw.length : 0).toString()}
-                subtitle="all time"
-                trend={12}
-                icon={Cpu}
-                iconColor="text-violet-400"
+                title="Successful Runs"
+                value={runsLoading ? '—' : (Array.isArray(runsRaw) ? runsRaw.filter((r: any) => r.status === 'COMPLETED').length : 0).toString()}
+                subtitle="completed"
+                icon={Activity}
+                iconColor="text-green-400"
               />
+
             </>
           )}
         </div>
@@ -375,7 +378,7 @@ export default function DashboardPage() {
                         <div>
                           <p className="text-sm font-medium">{run.actorName}</p>
                           <p className="text-xs text-white/40">
-                            {new Date(run.startedAt).toLocaleString()} · {run.creditsUsed} credits
+                            {new Date(run.startedAt).toLocaleString()}
                           </p>
                         </div>
                       </div>
@@ -404,8 +407,8 @@ export default function DashboardPage() {
                     onClick={() => router.push(href)}
                     className="w-full text-left flex items-center gap-3 text-sm h-12 border border-[#27272a] hover:bg-[#1c1c1f] rounded-lg px-3 transition-colors"
                   >
-                    <div className={`w-8 h-8 rounded bg-${color}-500/10 flex items-center justify-center shrink-0`}>
-                      <Play className={`w-4 h-4 text-${color}-500`} />
+                    <div className={`w-8 h-8 rounded ${quickActionColorMap[color]?.bg ?? 'bg-violet-500/10'} flex items-center justify-center shrink-0`}>
+                      <Play className={`w-4 h-4 ${quickActionColorMap[color]?.text ?? 'text-violet-500'}`} />
                     </div>
                     {label}
                   </button>
@@ -413,7 +416,7 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
 
-            {/* Plan card */}
+            {/* Team workspace card */}
             <Card className="bg-gradient-to-br from-indigo-900/20 to-purple-900/20 border-indigo-500/20">
               <CardContent className="pt-6 space-y-4">
                 <div className="w-12 h-12 rounded-full bg-indigo-500/20 flex items-center justify-center">
@@ -426,15 +429,15 @@ export default function DashboardPage() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    <h3 className="font-semibold">Plan: {workspace?.plan ?? 'STARTER'}</h3>
+                    <h3 className="font-semibold">{workspace?.name ?? 'Your Workspace'}</h3>
                     <p className="text-xs text-muted-foreground leading-relaxed">
-                      {workspace?.creditBalance?.toLocaleString() ?? 0} credits remaining · {workspace?.aiCredits?.toLocaleString() ?? 0} AI credits
+                      Internal automation platform for marketing, business &amp; sales teams.
                     </p>
                   </div>
                 )}
-                <Link href="/billing">
+                <Link href="/settings">
                   <Button size="sm" className="w-full bg-indigo-600 hover:bg-indigo-700">
-                    View Plans
+                    Manage Workspace
                   </Button>
                 </Link>
               </CardContent>

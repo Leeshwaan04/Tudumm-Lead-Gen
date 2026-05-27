@@ -26,11 +26,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'name, actorId, and cronExpr are required' }, { status: 400 })
   }
 
-  const actor = await prisma.actor.findFirst({ where: { id: actorId } })
-  if (!actor) return NextResponse.json({ error: 'Actor not found' }, { status: 404 })
+  // Ensure actor exists in this workspace; if using store slug, auto-create a local actor record
+  let actor = await prisma.actor.findFirst({ where: { id: actorId } })
+  if (!actor) {
+    const userId = session?.user?.id!
+    actor = await prisma.actor.create({
+      data: { workspaceId, authorId: userId, name: actorId, slug: actorId + '-' + Date.now(), description: '', status: 'DRAFT' },
+    })
+  }
 
   const schedule = await prisma.schedule.create({
-    data: { name, actorId, cronExpr, workspaceId, input: JSON.stringify(body.input ?? {}), timezone: body.timezone ?? 'UTC' },
+    data: { name, actorId: actor.id, cronExpr, workspaceId, input: JSON.stringify(body.input ?? {}), timezone: body.timezone ?? 'UTC' },
   })
   return NextResponse.json(schedule, { status: 201 })
 }

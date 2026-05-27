@@ -1,27 +1,27 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { Workspace, User, CreditBalance } from "@/types";
+import type { Workspace, User } from "@/types";
 
 interface WorkspaceState {
   currentWorkspace: Workspace | null;
   workspaces: Workspace[];
   currentUser: User | null;
-  creditBalance: CreditBalance | null;
   sidebarCollapsed: boolean;
+  mobileOpen: boolean;
   setCurrentWorkspace: (workspace: Workspace) => void;
   setWorkspaces: (workspaces: Workspace[]) => void;
   setCurrentUser: (user: User | null) => void;
-  setCreditBalance: (balance: CreditBalance) => void;
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
+  setMobileOpen: (open: boolean) => void;
+  toggleMobileOpen: () => void;
   reset: () => void;
 }
 
 const mockWorkspace: Workspace = {
   id: "ws_01HX4N3K7P",
-  name: "Acme Corp",
-  slug: "acme-corp",
-  plan: "growth",
+  name: "Indiabulls Marketing",
+  slug: "indiabulls-marketing",
   ownerId: "usr_01HX4N3K7P",
   createdAt: "2024-01-15T10:00:00Z",
   members: [
@@ -30,7 +30,7 @@ const mockWorkspace: Workspace = {
       role: "owner",
       user: {
         id: "usr_01HX4N3K7P",
-        email: "sumitbagewadi6@gmail.com",
+        email: "sumit.bagewadi@indiabulls.com",
         name: "Sumit Bagewadi",
         avatarUrl: "https://api.dicebear.com/9.x/avataaars/svg?seed=Sumit",
         createdAt: "2024-01-15T10:00:00Z",
@@ -41,18 +41,10 @@ const mockWorkspace: Workspace = {
 
 const mockUser: User = {
   id: "usr_01HX4N3K7P",
-  email: "sumitbagewadi6@gmail.com",
+  email: "sumit.bagewadi@indiabulls.com",
   name: "Sumit Bagewadi",
   avatarUrl: "https://api.dicebear.com/9.x/avataaars/svg?seed=Sumit",
   createdAt: "2024-01-15T10:00:00Z",
-};
-
-const mockCreditBalance: CreditBalance = {
-  total: 50000,
-  used: 18420,
-  remaining: 31580,
-  resetDate: "2026-06-01T00:00:00Z",
-  plan: "growth",
 };
 
 export const useWorkspaceStore = create<WorkspaceState>()(
@@ -63,31 +55,39 @@ export const useWorkspaceStore = create<WorkspaceState>()(
         mockWorkspace,
         {
           id: "ws_02HX4N3K7P",
-          name: "Side Project",
-          slug: "side-project",
-          plan: "starter",
+          name: "Indiabulls Sales",
+          slug: "indiabulls-sales",
+          ownerId: "usr_01HX4N3K7P",
+          createdAt: "2024-06-01T10:00:00Z",
+          members: [],
+        },
+        {
+          id: "ws_03HX4N3K7P",
+          name: "Indiabulls Business Dev",
+          slug: "indiabulls-bizdev",
           ownerId: "usr_01HX4N3K7P",
           createdAt: "2024-06-01T10:00:00Z",
           members: [],
         },
       ],
       currentUser: mockUser,
-      creditBalance: mockCreditBalance,
       sidebarCollapsed: false,
+      mobileOpen: false,
       setCurrentWorkspace: (workspace) => set({ currentWorkspace: workspace }),
       setWorkspaces: (workspaces) => set({ workspaces }),
       setCurrentUser: (user) => set({ currentUser: user }),
-      setCreditBalance: (balance) => set({ creditBalance: balance }),
       toggleSidebar: () =>
         set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
       setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
+      setMobileOpen: (open) => set({ mobileOpen: open }),
+      toggleMobileOpen: () => set((state) => ({ mobileOpen: !state.mobileOpen })),
       reset: () =>
         set({
           currentWorkspace: null,
           workspaces: [],
           currentUser: null,
-          creditBalance: null,
           sidebarCollapsed: false,
+          mobileOpen: false,
         }),
     }),
     {

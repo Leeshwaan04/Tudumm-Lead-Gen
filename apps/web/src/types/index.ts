@@ -1,7 +1,6 @@
 export type RunStatus = "running" | "succeeded" | "failed" | "aborted" | "queued";
 export type ActorStatus = "active" | "deprecated" | "beta";
 export type ProxyType = "residential" | "datacenter" | "mobile" | "isp";
-export type BillingPlan = "starter" | "growth" | "scale" | "enterprise";
 export type ScheduleFrequency = "hourly" | "daily" | "weekly" | "monthly" | "custom";
 
 export interface User {
@@ -16,7 +15,7 @@ export interface Workspace {
   id: string;
   name: string;
   slug: string;
-  plan: BillingPlan;
+  plan?: string;
   ownerId: string;
   createdAt: string;
   members: WorkspaceMember[];
@@ -26,14 +25,6 @@ export interface WorkspaceMember {
   userId: string;
   role: "owner" | "admin" | "member" | "viewer";
   user: User;
-}
-
-export interface CreditBalance {
-  total: number;
-  used: number;
-  remaining: number;
-  resetDate: string;
-  plan: BillingPlan;
 }
 
 export interface Run {
@@ -94,7 +85,7 @@ export interface Phantom {
   platform: PhantomPlatform;
   category: string;
   icon: string;
-  creditsPerRun: number;
+  unitsPerRun: number;
   averageDuration: number;
   totalLaunches: number;
   outputFields: string[];
@@ -198,17 +189,6 @@ export interface ProxyUsage {
   type: ProxyType;
 }
 
-export interface Invoice {
-  id: string;
-  amount: number;
-  currency: string;
-  status: "paid" | "pending" | "failed";
-  issuedAt: string;
-  paidAt?: string;
-  downloadUrl: string;
-  description: string;
-}
-
 export interface ApiKey {
   id: string;
   name: string;
@@ -229,10 +209,3 @@ export interface UsageDataPoint {
   items: number;
 }
 
-export interface PlanFeature {
-  name: string;
-  starter: string | boolean;
-  growth: string | boolean;
-  scale: string | boolean;
-  enterprise: string | boolean;
-}

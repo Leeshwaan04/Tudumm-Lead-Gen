@@ -81,11 +81,6 @@ export const queryKeys = {
     all: ["schedules"] as const,
     list: () => ["schedules", "list"] as const,
   },
-  billing: {
-    all: ["billing"] as const,
-    credits: () => ["billing", "credits"] as const,
-    invoices: () => ["billing", "invoices"] as const,
-  },
   proxy: {
     all: ["proxy"] as const,
     usage: () => ["proxy", "usage"] as const,

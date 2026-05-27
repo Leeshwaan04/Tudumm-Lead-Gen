@@ -116,13 +116,13 @@ export default function LinkedInPage() {
       const linkedinActor = actors.find((a: any) =>
         a.slug?.toLowerCase().includes('linkedin') || a.name?.toLowerCase().includes('linkedin')
       )
-      if (!linkedinActor) { alert('No LinkedIn actor found in store'); return }
+      if (!linkedinActor) { setToastMsg('No LinkedIn actor found in store'); return }
       await fetch('/api/runs/enqueue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ actorId: linkedinActor.id, input: { phantom: phantomName, sessionId: displaySess?.id } }),
       })
-      alert('Run enqueued!')
+      setToastMsg('Run enqueued!')
     } finally {
       setRunningId(null)
     }

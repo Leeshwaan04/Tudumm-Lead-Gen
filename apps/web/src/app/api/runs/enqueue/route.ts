@@ -10,25 +10,27 @@ export async function POST(req: Request) {
 
   const { actorId, input } = await req.json()
 
-  const actor = await prisma.actor.findFirst({ where: { id: actorId } })
-  if (!actor) return NextResponse.json({ error: 'Actor not found' }, { status: 404 })
+  // Find actor — if not found by id, try by slug (store actors use slugs as ids)
+  // Always filter by workspaceId to prevent cross-workspace access
+  let actor = await prisma.actor.findFirst({ where: { id: actorId, workspaceId } })
+  if (!actor) actor = await prisma.actor.findFirst({ where: { slug: actorId, workspaceId } })
+  // Auto-create ephemeral actor record for store/marketplace actors
+  if (!actor) {
+    const userId = session?.user?.id!
+    actor = await prisma.actor.create({
+      data: { workspaceId, authorId: userId, name: actorId, slug: actorId + '-' + Date.now(), description: '', status: 'DRAFT' },
+    })
+  }
 
   const inputJson = JSON.stringify(input ?? {})
   const run = await prisma.run.create({
-    data: { workspaceId, actorId, input: inputJson, status: 'QUEUED' },
+    data: { workspaceId, actorId: actor.id, input: inputJson, status: 'QUEUED' },
   })
 
-  // Only enqueue if Redis is available; otherwise run stays QUEUED for manual pickup
   try {
-    await runQueue.add('run', {
-      runId: run.id,
-      actorId,
-      workspaceId,
-      input: input ?? {},
-      actorSlug: actor.slug,
-    })
+    await runQueue.add('run', { runId: run.id, actorId: actor.id, workspaceId, input: input ?? {}, actorSlug: actor.slug })
   } catch {
-    // Redis not available in local dev without Redis running — run stays QUEUED
+    // Redis not available in local dev — run stays QUEUED
   }
 
   return NextResponse.json(run, { status: 201 })

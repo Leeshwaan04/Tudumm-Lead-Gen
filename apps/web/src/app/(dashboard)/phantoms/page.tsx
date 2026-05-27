@@ -16,7 +16,7 @@ interface Phantom {
   category: string;
   description: string;
   icon: string;
-  creditsPerRun: number;   // mapped from price
+  unitsPerRun: number;   // mapped from price
   averageDuration: number; // not in API — default 120
   totalLaunches: number;   // mapped from runs
   rating: number;
@@ -77,7 +77,7 @@ function mapActor(a: {
     category: a.category,
     description: a.description,
     icon: deriveIcon(a.slug, a.category),
-    creditsPerRun: a.price,
+    unitsPerRun: a.price,
     averageDuration: 120,
     totalLaunches: a.runs,
     rating: a.rating,
@@ -192,7 +192,7 @@ function LaunchModal({
             <div>
               <h2 className="text-base font-semibold">{phantom.name}</h2>
               <p className="text-xs text-white/40 flex items-center gap-1">
-                <Zap className="h-3 w-3 text-amber-400" />{phantom.creditsPerRun} credits/run
+                <Zap className="h-3 w-3 text-amber-400" />{phantom.unitsPerRun} runs/unit
               </p>
             </div>
           </div>
@@ -333,8 +333,8 @@ function PhantomCardItem({ phantom, onLaunch }: { phantom: Phantom; onLaunch: ()
 
       <div className="grid grid-cols-3 gap-2 text-xs text-center">
         <div className="rounded-lg bg-white/5 p-2">
-          <div className="flex items-center justify-center gap-1 text-amber-400 font-semibold"><Zap className="h-3 w-3" />{phantom.creditsPerRun}</div>
-          <div className="text-white/30 mt-0.5">credits/run</div>
+          <div className="flex items-center justify-center gap-1 text-amber-400 font-semibold"><Zap className="h-3 w-3" />{phantom.unitsPerRun}</div>
+          <div className="text-white/30 mt-0.5">runs/unit</div>
         </div>
         <div className="rounded-lg bg-white/5 p-2">
           <div className="flex items-center justify-center gap-1 text-yellow-400 font-semibold">★ {phantom.rating.toFixed(1)}</div>

@@ -9,7 +9,16 @@ export async function GET() {
 
   const workspace = await prisma.workspace.findUnique({
     where: { id: workspaceId },
-    include: { members: { include: { user: true } } },
+    include: {
+      members: {
+        include: {
+          user: {
+            select: { id: true, name: true, email: true, avatarUrl: true, createdAt: true },
+          },
+        },
+      },
+    },
   })
+  if (!workspace) return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
   return NextResponse.json(workspace)
 }

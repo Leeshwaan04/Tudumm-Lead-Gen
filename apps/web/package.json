@@ -8,8 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
-    "worker": "NODE_TLS_REJECT_UNAUTHORIZED=0 tsx src/workers/start-worker.ts",
-    "worker:dev": "NODE_TLS_REJECT_UNAUTHORIZED=0 tsx watch src/workers/start-worker.ts"
+    "worker": "tsx src/workers/start-worker.ts",
+    "worker:dev": "tsx watch src/workers/start-worker.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",

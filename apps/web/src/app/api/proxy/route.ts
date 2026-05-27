@@ -12,9 +12,9 @@ export async function GET() {
     orderBy: { createdAt: 'desc' },
   })
 
-  const parsed = configs.map((c) => ({
+  const parsed = configs.map(({ credentials, ...c }) => ({
     ...c,
-    credentials: JSON.parse(c.credentials),
+    credentialsSet: true,
   }))
 
   // Aggregate usage stats
@@ -34,7 +34,9 @@ export async function POST(req: Request) {
   const workspaceId = (session as any)?.workspaceId
   if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { name, type, country, provider, credentials } = await req.json()
+  const body = await req.json()
+  const name = body.name ?? body.label
+  const { type, country, provider, credentials } = body
   if (!name || !type) return NextResponse.json({ error: 'name and type are required' }, { status: 400 })
 
   const config = await prisma.proxyConfig.create({
@@ -48,5 +50,6 @@ export async function POST(req: Request) {
     },
   })
 
-  return NextResponse.json({ ...config, credentials: JSON.parse(config.credentials) }, { status: 201 })
+  const { credentials: _creds, ...configWithout } = config
+  return NextResponse.json({ ...configWithout, credentialsSet: true }, { status: 201 })
 }

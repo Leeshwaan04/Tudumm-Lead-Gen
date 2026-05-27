@@ -29,6 +29,16 @@ export async function POST(req: Request) {
     const { email, role } = await req.json()
     if (!email) return NextResponse.json({ error: 'email required' }, { status: 400 })
 
+    const callerMember = await prisma.workspaceMember.findFirst({
+      where: { workspaceId, userId: session?.user?.id ?? '' }
+    })
+    if (!callerMember || (callerMember.role !== 'OWNER' && callerMember.role !== 'ADMIN')) {
+      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+    }
+    if (role === 'OWNER' && callerMember.role !== 'OWNER') {
+      return NextResponse.json({ error: 'Only owners can assign owner role' }, { status: 403 })
+    }
+
     let user = await prisma.user.findUnique({ where: { email } })
     if (!user) {
       user = await prisma.user.create({ data: { email, name: email.split('@')[0] } })

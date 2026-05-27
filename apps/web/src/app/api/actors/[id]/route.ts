@@ -73,8 +73,21 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id } = await params
-    const result = await prisma.actor.deleteMany({ where: { id, workspaceId } })
-    if (result.count === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+    // Verify actor belongs to workspace before cascade delete
+    const actor = await prisma.actor.findFirst({ where: { id, workspaceId } })
+    if (!actor) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+    // Cascade: delete dependent records first (FK constraints)
+    await prisma.schedule.deleteMany({ where: { actorId: id } })
+    // Clear dataset->run FK before deleting runs
+    const actorRuns = await prisma.run.findMany({ where: { actorId: id }, select: { id: true } })
+    const runIds = actorRuns.map(r => r.id)
+    if (runIds.length > 0) {
+      await prisma.dataset.updateMany({ where: { runId: { in: runIds } }, data: { runId: null } })
+    }
+    await prisma.run.deleteMany({ where: { actorId: id } })
+    await prisma.actor.delete({ where: { id } })
 
     return NextResponse.json({ ok: true })
   } catch (e: any) {

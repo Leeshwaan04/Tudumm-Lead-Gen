@@ -42,7 +42,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (result.count === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
     const updated = await prisma.schedule.findUnique({ where: { id }, include: { actor: true } })
-    return NextResponse.json({ ...updated, input: JSON.parse((updated as any).input || '{}') })
+    if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    return NextResponse.json({ ...updated, input: JSON.parse(updated.input || '{}') })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }

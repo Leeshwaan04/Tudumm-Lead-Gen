@@ -33,8 +33,20 @@ export async function POST(req: Request) {
   if (!workspaceId || !userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
+  const name = body.name ?? 'Untitled Actor'
+  const slug = body.slug ?? name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') + '-' + Date.now()
   const actor = await prisma.actor.create({
-    data: { ...body, workspaceId, authorId: userId },
+    data: {
+      workspaceId,
+      authorId: userId,
+      name,
+      slug,
+      description: body.description ?? '',
+      categories: JSON.stringify(body.categories ?? []),
+      tags: JSON.stringify(body.tags ?? []),
+      isPublic: body.isPublic ?? false,
+      status: body.status ?? 'DRAFT',
+    },
   })
   return NextResponse.json(actor, { status: 201 })
 }

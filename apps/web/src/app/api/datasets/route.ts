@@ -14,3 +14,23 @@ export async function GET() {
   })
   return NextResponse.json(datasets)
 }
+
+export async function POST(req: Request) {
+  const session = await auth()
+  const workspaceId = (session as any)?.workspaceId
+  if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const body = await req.json()
+  const { name, runId } = body
+  if (!name) return NextResponse.json({ error: 'name is required' }, { status: 400 })
+
+  const dataset = await prisma.dataset.create({
+    data: {
+      workspaceId,
+      name,
+      runId: runId ?? null,
+      s3Key: `datasets/${workspaceId}/${Date.now()}.json`,
+    },
+  })
+  return NextResponse.json(dataset, { status: 201 })
+}

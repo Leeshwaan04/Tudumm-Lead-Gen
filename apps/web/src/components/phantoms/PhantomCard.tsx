@@ -79,9 +79,9 @@ export function PhantomCard({ phantom }: PhantomCardProps) {
           <div className="rounded-lg bg-white/5 p-2">
             <div className="flex items-center justify-center gap-1 text-amber-400 font-semibold">
               <Zap className="h-3 w-3" />
-              {phantom.creditsPerRun}
+              {phantom.unitsPerRun}
             </div>
-            <div className="text-slate-500 mt-0.5">credits/run</div>
+            <div className="text-slate-500 mt-0.5">runs/unit</div>
           </div>
           <div className="rounded-lg bg-white/5 p-2">
             <div className="flex items-center justify-center gap-1 text-slate-300 font-semibold">

@@ -12,7 +12,8 @@ export async function GET() {
       where: { workspaceId },
       orderBy: { createdAt: 'desc' },
     })
-    return NextResponse.json(sessions)
+    const sanitized = sessions.map(({ sessionCookie, ...s }) => ({ ...s, cookieSet: true }))
+    return NextResponse.json(sanitized)
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
@@ -38,7 +39,8 @@ export async function POST(req: Request) {
         dailyLimit: dailyLimit ?? 100,
       },
     })
-    return NextResponse.json(created, { status: 201 })
+    const { sessionCookie: _cookie, ...createdWithout } = created
+    return NextResponse.json({ ...createdWithout, cookieSet: true }, { status: 201 })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -12,7 +12,6 @@ import {
   Globe2,
   Database,
   Clock,
-  CreditCard,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -23,6 +22,7 @@ import {
   BookOpen,
   Sparkles,
   Users2,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/store/workspace";
@@ -50,7 +50,6 @@ const navItems: NavItem[] = [
   { href: "/playbooks", label: "Playbooks", icon: BookOpen, isNew: true },
   { href: "/linkedin", label: "LinkedIn", icon: Linkedin },
   { href: "/enrichment", label: "Enrichment", icon: Sparkles },
-  { href: "/billing", label: "Billing", icon: CreditCard },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -62,37 +61,55 @@ const quickActions: NavItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { sidebarCollapsed, toggleSidebar } = useWorkspaceStore();
+  const { sidebarCollapsed, toggleSidebar, mobileOpen, setMobileOpen } = useWorkspaceStore();
 
-  return (
-    <aside
-      className={cn(
-        "fixed left-0 top-0 z-40 h-screen flex flex-col border-r border-white/10 bg-slate-950 transition-all duration-300",
-        sidebarCollapsed ? "w-16" : "w-60"
-      )}
-    >
+  // Close mobile sidebar on route change
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname, setMobileOpen]);
+
+  // Close on Escape key
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileOpen(false);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [setMobileOpen]);
+
+  const NavContent = ({ isMobile = false }: { isMobile?: boolean }) => (
+    <>
       {/* Logo */}
-      <div className="flex h-16 items-center border-b border-white/10 px-4">
-        {!sidebarCollapsed && (
-          <Link href="/dashboard" className="flex items-center gap-2 group">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 shadow-lg shadow-violet-500/25">
+      <div className="flex h-16 items-center border-b border-white/10 px-4 shrink-0">
+        {(!sidebarCollapsed || isMobile) ? (
+          <Link href="/dashboard" className="flex items-center gap-2 group flex-1">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 shadow-lg shadow-violet-500/25 shrink-0">
               <Zap className="h-4 w-4 text-white" />
             </div>
             <span className="font-bold text-lg text-white tracking-tight">Tudumm</span>
           </Link>
-        )}
-        {sidebarCollapsed && (
+        ) : (
           <Link href="/dashboard" className="mx-auto">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 shadow-lg shadow-violet-500/25">
               <Zap className="h-4 w-4 text-white" />
             </div>
           </Link>
         )}
+        {/* Close button for mobile */}
+        {isMobile && (
+          <button
+            onClick={() => setMobileOpen(false)}
+            className="ml-auto p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+            aria-label="Close menu"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        )}
       </div>
 
       {/* Nav items */}
       <nav className="flex-1 overflow-y-auto px-2 py-4 space-y-0.5">
-        {!sidebarCollapsed && (
+        {(!sidebarCollapsed || isMobile) && (
           <p className="px-3 pb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
             Platform
           </p>
@@ -100,7 +117,8 @@ export function Sidebar() {
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive =
-            pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
+            pathname === item.href ||
+            (item.href !== "/dashboard" && pathname.startsWith(item.href));
           return (
             <Link
               key={item.href}
@@ -110,9 +128,9 @@ export function Sidebar() {
                 isActive
                   ? "bg-violet-600/20 text-violet-300 border border-violet-500/30"
                   : "text-slate-400 hover:bg-white/5 hover:text-white",
-                sidebarCollapsed && "justify-center px-0"
+                sidebarCollapsed && !isMobile && "justify-center px-0"
               )}
-              title={sidebarCollapsed ? item.label : undefined}
+              title={sidebarCollapsed && !isMobile ? item.label : undefined}
             >
               <Icon
                 className={cn(
@@ -120,7 +138,7 @@ export function Sidebar() {
                   isActive ? "text-violet-400" : "text-slate-500 group-hover:text-slate-300"
                 )}
               />
-              {!sidebarCollapsed && (
+              {(!sidebarCollapsed || isMobile) && (
                 <>
                   <span className="flex-1">{item.label}</span>
                   {item.badge && (
@@ -139,48 +157,82 @@ export function Sidebar() {
           );
         })}
 
-        {!sidebarCollapsed && (
-          <>
-            <div className="pt-4 pb-2">
-              <p className="px-3 pb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                Quick Access
-              </p>
-              {quickActions.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-500 hover:bg-white/5 hover:text-white transition-all duration-150"
-                  >
-                    <Icon className="h-3.5 w-3.5 shrink-0 text-slate-600 group-hover:text-slate-400" />
-                    <span>{item.label}</span>
-                  </Link>
-                );
-              })}
-            </div>
-          </>
+        {(!sidebarCollapsed || isMobile) && (
+          <div className="pt-4 pb-2">
+            <p className="px-3 pb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              Quick Access
+            </p>
+            {quickActions.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-500 hover:bg-white/5 hover:text-white transition-all duration-150"
+                >
+                  <Icon className="h-3.5 w-3.5 shrink-0 text-slate-600 group-hover:text-slate-400" />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </div>
         )}
       </nav>
 
-      {/* Collapse toggle */}
-      <div className="border-t border-white/10 p-2">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggleSidebar}
-          className={cn(
-            "w-full text-slate-400 hover:text-white hover:bg-white/5",
-            sidebarCollapsed ? "justify-center" : "justify-end"
-          )}
-        >
-          {sidebarCollapsed ? (
-            <ChevronRight className="h-4 w-4" />
-          ) : (
-            <ChevronLeft className="h-4 w-4" />
-          )}
-        </Button>
-      </div>
-    </aside>
+      {/* Collapse toggle — desktop only */}
+      {!isMobile && (
+        <div className="border-t border-white/10 p-2 shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleSidebar}
+            className={cn(
+              "w-full text-slate-400 hover:text-white hover:bg-white/5",
+              sidebarCollapsed ? "justify-center" : "justify-end"
+            )}
+            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {sidebarCollapsed ? (
+              <ChevronRight className="h-4 w-4" />
+            ) : (
+              <ChevronLeft className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
+      )}
+    </>
+  );
+
+  return (
+    <>
+      {/* ── Desktop sidebar ───────────────────────────────────────────── */}
+      <aside
+        className={cn(
+          "hidden md:flex fixed left-0 top-0 z-40 h-screen flex-col border-r border-white/10 bg-slate-950 transition-all duration-300",
+          sidebarCollapsed ? "w-16" : "w-60"
+        )}
+      >
+        <NavContent />
+      </aside>
+
+      {/* ── Mobile backdrop ───────────────────────────────────────────── */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden"
+          onClick={() => setMobileOpen(false)}
+          aria-hidden
+        />
+      )}
+
+      {/* ── Mobile drawer ─────────────────────────────────────────────── */}
+      <aside
+        className={cn(
+          "fixed left-0 top-0 z-50 h-screen w-72 flex flex-col border-r border-white/10 bg-slate-950 transition-transform duration-300 md:hidden",
+          mobileOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        <NavContent isMobile />
+      </aside>
+    </>
   );
 }

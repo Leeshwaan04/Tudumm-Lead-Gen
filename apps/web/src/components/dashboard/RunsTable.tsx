@@ -4,7 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { ExternalLink, Clock, CheckCircle2, XCircle, Loader2, Ban, HelpCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { formatDuration, formatDateTime, formatCredits } from "@/lib/utils";
+import { formatDuration, formatDateTime } from "@/lib/utils";
 import type { Run, RunStatus } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -57,9 +57,6 @@ export function RunsTable({ runs, showActor = true }: RunsTableProps) {
             <th className="px-4 py-3 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">
               Items
             </th>
-            <th className="px-4 py-3 text-right text-xs font-semibold text-slate-400 uppercase tracking-wider">
-              Credits
-            </th>
             <th className="px-4 py-3 w-10" />
           </tr>
         </thead>
@@ -83,11 +80,6 @@ export function RunsTable({ runs, showActor = true }: RunsTableProps) {
               </td>
               <td className="px-4 py-3 text-right text-slate-300">
                 {run.itemsScraped?.toLocaleString() ?? "—"}
-              </td>
-              <td className="px-4 py-3 text-right">
-                <span className="flex items-center justify-end gap-1 text-amber-400">
-                  {formatCredits(run.creditsUsed)}
-                </span>
               </td>
               <td className="px-4 py-3">
                 <Link

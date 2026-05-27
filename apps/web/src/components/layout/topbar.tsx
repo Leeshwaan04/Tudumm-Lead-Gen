@@ -2,39 +2,43 @@
 
 import React, { useState } from "react";
 import { useWorkspaceStore } from "@/store/workspace";
-import { Button } from "@/components/ui/button";
-import { formatCredits } from "@/lib/utils";
 import {
   Bell,
   ChevronDown,
-  Zap,
   LogOut,
   User,
-  CreditCard,
   Settings,
   Building2,
   Check,
+  Menu,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
+import { signOut } from "next-auth/react";
 
 export function Topbar() {
-  const { currentWorkspace, workspaces, currentUser, creditBalance, setCurrentWorkspace, sidebarCollapsed } =
+  const { currentWorkspace, workspaces, currentUser, setCurrentWorkspace, sidebarCollapsed, toggleMobileOpen } =
     useWorkspaceStore();
   const [workspacesOpen, setWorkspacesOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-
-  const usagePct =
-    creditBalance
-      ? Math.round((creditBalance.used / creditBalance.total) * 100)
-      : 0;
 
   return (
     <header
       className={cn(
         "fixed top-0 right-0 z-30 flex h-16 items-center gap-4 border-b border-white/10 bg-slate-950/80 backdrop-blur-xl px-4 transition-all duration-300",
-        sidebarCollapsed ? "left-16" : "left-60"
+        "left-0 md:left-auto",
+        sidebarCollapsed ? "md:left-16" : "md:left-60"
       )}
     >
+      {/* Hamburger — mobile only */}
+      <button
+        onClick={toggleMobileOpen}
+        className="flex md:hidden items-center justify-center h-9 w-9 rounded-lg text-slate-400 hover:bg-white/5 hover:text-white transition-colors"
+        aria-label="Toggle menu"
+      >
+        <Menu className="h-5 w-5" />
+      </button>
+
       {/* Workspace Switcher */}
       <div className="relative">
         <button
@@ -47,10 +51,7 @@ export function Topbar() {
           <div className="flex h-5 w-5 items-center justify-center rounded bg-gradient-to-br from-violet-500 to-indigo-500">
             <Building2 className="h-3 w-3 text-white" />
           </div>
-          <span>{currentWorkspace?.name ?? "Select workspace"}</span>
-          <span className="text-xs text-slate-400 capitalize bg-white/5 rounded px-1.5 py-0.5">
-            {currentWorkspace?.plan}
-          </span>
+          <span className="max-w-[120px] truncate">{currentWorkspace?.name ?? "Select workspace"}</span>
           <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
         </button>
 
@@ -73,7 +74,7 @@ export function Topbar() {
                 </div>
                 <div className="flex-1 text-left">
                   <div className="font-medium">{ws.name}</div>
-                  <div className="text-xs text-slate-400 capitalize">{ws.plan} plan</div>
+                  <div className="text-xs text-slate-400">{ws.plan}</div>
                 </div>
                 {currentWorkspace?.id === ws.id && (
                   <Check className="h-4 w-4 text-violet-400" />
@@ -91,31 +92,6 @@ export function Topbar() {
       </div>
 
       <div className="flex-1" />
-
-      {/* Credits display */}
-      {creditBalance && (
-        <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5">
-          <Zap className="h-3.5 w-3.5 text-amber-400" />
-          <div>
-            <div className="text-xs font-semibold text-white">
-              {formatCredits(creditBalance.remaining)} credits
-            </div>
-            <div className="w-20 h-1 rounded-full bg-white/10 overflow-hidden">
-              <div
-                className={cn(
-                  "h-full rounded-full transition-all",
-                  usagePct > 80
-                    ? "bg-red-500"
-                    : usagePct > 60
-                    ? "bg-amber-500"
-                    : "bg-violet-500"
-                )}
-                style={{ width: `${100 - usagePct}%` }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Notifications */}
       <button className="relative flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-white/5 hover:text-white transition-colors">
@@ -135,6 +111,9 @@ export function Topbar() {
           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 text-xs font-bold text-white">
             {currentUser?.name?.[0] ?? "U"}
           </div>
+          <span className="hidden sm:block text-sm text-white font-medium max-w-[100px] truncate">
+            {currentUser?.name}
+          </span>
           <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
         </button>
 
@@ -144,21 +123,27 @@ export function Topbar() {
               <div className="font-medium text-sm text-white">{currentUser?.name}</div>
               <div className="text-xs text-slate-400">{currentUser?.email}</div>
             </div>
-            {[
-              { icon: User, label: "Profile" },
-              { icon: Settings, label: "Settings" },
-              { icon: CreditCard, label: "Billing" },
-            ].map(({ icon: Icon, label }) => (
-              <button
-                key={label}
-                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white transition-colors"
-              >
-                <Icon className="h-4 w-4" />
-                {label}
-              </button>
-            ))}
+            <Link
+              href="/settings"
+              onClick={() => setUserMenuOpen(false)}
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white transition-colors"
+            >
+              <User className="h-4 w-4" />
+              Profile
+            </Link>
+            <Link
+              href="/settings"
+              onClick={() => setUserMenuOpen(false)}
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-white/5 hover:text-white transition-colors"
+            >
+              <Settings className="h-4 w-4" />
+              Settings
+            </Link>
             <div className="border-t border-white/10 mt-1 pt-1">
-              <button className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors">
+              <button
+                onClick={() => signOut({ callbackUrl: "/login" })}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+              >
                 <LogOut className="h-4 w-4" />
                 Sign out
               </button>

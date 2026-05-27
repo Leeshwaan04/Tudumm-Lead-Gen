@@ -2,6 +2,25 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
 
+export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth()
+  const workspaceId = (session as any)?.workspaceId
+  if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  const { id: sequenceId } = await params
+
+  const sequence = await prisma.sequence.findFirst({ where: { id: sequenceId, workspaceId } })
+  if (!sequence) return NextResponse.json({ error: 'Sequence not found' }, { status: 404 })
+
+  const sequenceLeads = await prisma.sequenceLead.findMany({
+    where: { sequenceId },
+    include: { lead: true },
+    orderBy: { addedAt: 'asc' },
+  })
+
+  return NextResponse.json(sequenceLeads)
+}
+
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth()
   const workspaceId = (session as any)?.workspaceId

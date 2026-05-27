@@ -14,11 +14,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     const { searchParams } = new URL(req.url)
     const since = searchParams.get('since')
+    let sinceDate: Date | undefined
+    if (since) {
+      sinceDate = new Date(since)
+      if (isNaN(sinceDate.getTime())) {
+        return NextResponse.json({ error: 'Invalid since parameter — must be ISO 8601 date' }, { status: 400 })
+      }
+    }
 
     const logs = await prisma.runLog.findMany({
       where: {
         runId: id,
-        ...(since ? { timestamp: { gt: new Date(since) } } : {}),
+        ...(sinceDate ? { timestamp: { gt: sinceDate } } : {}),
       },
       orderBy: { timestamp: 'asc' },
     })
