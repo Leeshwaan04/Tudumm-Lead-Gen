@@ -6,10 +6,10 @@ WORKDIR /build
 RUN apk add --no-cache git
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN go mod download -x 2>/dev/null; true
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOFLAGS=-mod=mod \
     go build -ldflags="-w -s" -o /app/server ./main.go
 
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
