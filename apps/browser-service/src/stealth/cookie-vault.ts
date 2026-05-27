@@ -57,7 +57,7 @@ export class CookieVault {
   async getCookie(workspaceId: string, platform: string, alias: string): Promise<object | null> {
     const encrypted = await this.redis.get(this.key(workspaceId, platform, alias))
     if (!encrypted) return null
-    return JSON.parse(decrypt(encrypted))
+    return JSON.parse(decrypt(encrypted as string))
   }
 
   async injectCookies(context: BrowserContext, workspaceId: string, platform: string, alias: string): Promise<void> {
