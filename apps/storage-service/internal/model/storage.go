@@ -28,8 +28,19 @@ type KVStore struct {
 	ID          string    `json:"id"`
 	WorkspaceID string    `json:"workspace_id"`
 	Name        string    `json:"name"`
+	ItemCount   int64     `json:"item_count"`
+	SizeBytes   int64     `json:"size_bytes"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type KVEntryWithValue struct {
+	ID          int64  `json:"id"`
+	StoreID     string `json:"store_id"`
+	Key         string `json:"key"`
+	ContentType string `json:"content_type"`
+	SizeBytes   int64  `json:"size_bytes"`
+	Value       []byte `json:"-"`
 }
 
 type KVEntry struct {
@@ -44,13 +55,14 @@ type KVEntry struct {
 }
 
 type RequestQueue struct {
-	ID          string    `json:"id"`
-	WorkspaceID string    `json:"workspace_id"`
-	Name        string    `json:"name"`
-	TotalCount  int64     `json:"total_count"`
-	HandledCount int64    `json:"handled_count"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID           string    `json:"id"`
+	WorkspaceID  string    `json:"workspace_id"`
+	Name         string    `json:"name"`
+	TotalCount   int64     `json:"total_count"`
+	HandledCount int64     `json:"handled_count"`
+	PendingCount int64     `json:"pending_count"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type QueueItemStatus string

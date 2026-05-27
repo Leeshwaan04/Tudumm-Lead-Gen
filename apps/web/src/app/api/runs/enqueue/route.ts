@@ -28,7 +28,7 @@ export async function POST(req: Request) {
   })
 
   try {
-    await runQueue.add('run', { runId: run.id, actorId: actor.id, workspaceId, input: input ?? {}, actorSlug: actor.slug })
+    await runQueue.add('run', { runId: run.id, actorId: actor.id, workspaceId, input: input ?? {}, actorSlug: actor.slug, imageName: `tudumm/actor-${actor.slug}:latest` })
   } catch {
     // Redis not available in local dev — run stays QUEUED
   }

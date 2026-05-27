@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
+import { getStorageClient, STORAGE_BUCKET } from '@/lib/storage'
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -15,18 +16,19 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const { searchParams } = new URL(req.url)
     const format = searchParams.get('format') ?? 'json'
 
-    const count = Math.min(dataset.itemCount, 100)
-    const nameLower = dataset.name.toLowerCase()
-
-    const items = Array.from({ length: count }, (_, i) => {
-      if (nameLower.includes('linkedin')) {
-        return { fullName: `Person ${i + 1}`, title: 'Software Engineer', company: `Company ${i + 1}`, linkedinUrl: `https://linkedin.com/in/person-${i + 1}`, location: 'San Francisco, CA', connections: 500 + i }
-      } else if (nameLower.includes('google') || nameLower.includes('maps')) {
-        return { name: `Business ${i + 1}`, address: `${100 + i} Main St`, phone: `+1555000${String(i).padStart(4, '0')}`, rating: (3 + (i % 20) / 10).toFixed(1), category: 'Services', website: `https://business${i + 1}.com` }
-      } else {
-        return { id: `item-${i + 1}`, value: `Value ${i + 1}`, score: i * 10, createdAt: new Date().toISOString() }
+    // Fetch real items from MinIO/S3 if available
+    let items: any[] = []
+    if (dataset.s3Key) {
+      try {
+        const minio = getStorageClient()
+        const stream = await minio.getObject(STORAGE_BUCKET, dataset.s3Key)
+        const chunks: Buffer[] = []
+        for await (const chunk of stream) chunks.push(Buffer.from(chunk))
+        items = JSON.parse(Buffer.concat(chunks).toString('utf-8'))
+      } catch {
+        items = []
       }
-    })
+    }
 
     const filename = `${dataset.name.replace(/\s+/g, '-')}-export`
 
@@ -41,8 +43,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }
 
     if (format === 'csv') {
-      if (items.length === 0) return new NextResponse('', { headers: { 'Content-Type': 'text/csv' } })
-      const headers = Object.keys(items[0] ?? {})
+      if (items.length === 0) {
+        return new NextResponse('', {
+          headers: { 'Content-Type': 'text/csv', 'Content-Disposition': `attachment; filename="${filename}.csv"` },
+        })
+      }
+      const headers = Object.keys(items[0])
       const rows = items.map(item =>
         headers.map(h => {
           const val = String((item as any)[h] ?? '')
@@ -58,8 +64,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       })
     }
 
-    // JSON default
-    return new NextResponse(JSON.stringify(items), {
+    return new NextResponse(JSON.stringify(items, null, 2), {
       headers: {
         'Content-Type': 'application/json',
         'Content-Disposition': `attachment; filename="${filename}.json"`,

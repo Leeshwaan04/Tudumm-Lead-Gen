@@ -53,7 +53,7 @@ func main() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
-	handler.RegisterScheduleHandlers(r, scheduler, logger)
+	handler.RegisterScheduleHandlers(r, scheduler, dbPool, logger)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.Port,

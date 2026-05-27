@@ -1,0 +1,28 @@
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - node -v
+        - npm install -g pnpm@9
+        - pnpm --version
+        - pnpm install --frozen-lockfile
+        # Generate Prisma client (uses DATABASE_URL from Amplify env vars)
+        - cd apps/web
+        - DATABASE_URL="${DATABASE_URL:-file:./dev.db}" npx prisma generate
+        - cd ../..
+    build:
+      commands:
+        - cd apps/web
+        - pnpm run build
+  artifacts:
+    # Amplify SSR: serve from .next directory
+    baseDirectory: apps/web/.next
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - node_modules/**/*
+      - apps/web/node_modules/**/*
+      - apps/web/.next/cache/**/*
+      - ~/.pnpm-store/**/*

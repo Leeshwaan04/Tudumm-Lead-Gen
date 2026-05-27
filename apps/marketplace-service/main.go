@@ -32,10 +32,8 @@ func main() {
 	}
 	defer dbPool.Close()
 
-	// Redis connection
-	rdb := redis.NewClient(&redis.Options{
-		Addr: cfg.RedisURL,
-	})
+	// Redis connection (available for future caching use)
+	_ = redis.NewClient(&redis.Options{Addr: cfg.RedisURL})
 
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)

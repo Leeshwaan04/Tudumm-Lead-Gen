@@ -27,7 +27,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { id: sequenceId } = await params
-  const { leadId } = await req.json()
+  const body = await req.json()
+  // Accept both singular leadId and array leadIds
+  const leadId: string | undefined = body.leadId ?? (Array.isArray(body.leadIds) ? body.leadIds[0] : undefined)
   if (!leadId) return NextResponse.json({ error: 'leadId is required' }, { status: 400 })
 
   // Verify sequence belongs to workspace

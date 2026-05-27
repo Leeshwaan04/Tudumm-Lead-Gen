@@ -278,7 +278,7 @@ func (s *StorageService) FetchNextQueueItem(ctx context.Context, queueID string)
 		 WHERE id = (SELECT id FROM request_queue_items WHERE queue_id=$1 AND status='PENDING' ORDER BY added_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED)
 		 RETURNING id, queue_id, url, unique_key, status, retries, added_at`,
 		queueID,
-	).Scan(&item.ID, &item.QueueID, &item.URL, &item.UniqueKey, &item.Status, &item.Retries, &item.AddedAt)
+	).Scan(&item.ID, &item.QueueID, &item.URL, &item.UniqueKey, &item.Status, &item.Retries, &item.CreatedAt)
 	return item, err
 }
 

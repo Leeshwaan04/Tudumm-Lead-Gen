@@ -4,8 +4,9 @@ export type RunJobData = {
   runId: string
   actorId: string
   workspaceId: string
+  imageName: string
   input: Record<string, unknown>
-  actorSlug: string
+  actorSlug?: string
 }
 
 const connection = {
@@ -23,6 +24,18 @@ let _queue: Queue | null = null
 function getQueue(): Queue {
   if (!_queue) _queue = new Queue('runs', { connection })
   return _queue
+}
+
+export async function publishRunJob(data: RunJobData): Promise<void> {
+  await Promise.race([
+    getQueue().add('execute', data, {
+      removeOnComplete: 100,
+      removeOnFail: 200,
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 5000 },
+    }),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Redis timeout')), 3000)),
+  ])
 }
 
 export const runQueue = {
