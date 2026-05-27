@@ -15,7 +15,7 @@ type PlanLimits struct {
 	MaxCredits        int64
 }
 
-var planLimits = map[models.PlanType]PlanLimits{
+var planLimits = map[models.PlanTier]PlanLimits{
 	models.PlanStarter:    {MaxConcurrentJobs: 3, MaxCredits: 1000},
 	models.PlanGrowth:     {MaxConcurrentJobs: 10, MaxCredits: 10000},
 	models.PlanEnterprise: {MaxConcurrentJobs: 100, MaxCredits: 1000000},

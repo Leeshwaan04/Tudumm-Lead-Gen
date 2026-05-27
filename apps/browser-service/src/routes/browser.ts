@@ -38,7 +38,7 @@ router.post('/sessions', async (req: Request, res: Response) => {
  * Close a browser session.
  */
 router.delete('/sessions/:id', async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
   const session = pool.getSession(id);
   if (!session) {
     res.status(404).json({ error: 'Session not found' });

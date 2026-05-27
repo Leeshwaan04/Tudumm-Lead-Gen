@@ -67,7 +67,7 @@ func (w *Watchdog) checkRunningTimeout(ctx context.Context) {
 			continue
 		}
 
-		if err := w.db.UpdateJobStatus(ctx, job.ID, models.JobStatusTimedOut, "job exceeded timeout"); err != nil {
+		if err := w.db.UpdateJobStatus(ctx, job.ID, models.JobStatusTimedOut, 0); err != nil {
 			w.logger.Error("watchdog: failed to mark job TIMED_OUT",
 				zap.String("job_id", job.ID.String()),
 				zap.Error(err),
@@ -99,7 +99,7 @@ func (w *Watchdog) checkProvisioningStuck(ctx context.Context) {
 			continue
 		}
 
-		if err := w.db.UpdateJobStatus(ctx, job.ID, models.JobStatusFailed, "provisioning timed out after 5 minutes"); err != nil {
+		if err := w.db.UpdateJobStatus(ctx, job.ID, models.JobStatusFailed, 0); err != nil {
 			w.logger.Error("watchdog: failed to mark provisioning job FAILED",
 				zap.String("job_id", job.ID.String()),
 				zap.Error(err),

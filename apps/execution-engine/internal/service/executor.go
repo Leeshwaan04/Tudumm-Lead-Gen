@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/tudumm/execution-engine/internal/config"
 	"github.com/tudumm/execution-engine/internal/model"
@@ -52,7 +52,7 @@ func (e *ExecutorService) Execute(ctx context.Context, msg *RunMessage) error {
 
 	// Pull image
 	e.log.Info("pulling image", zap.String("run_id", msg.RunID), zap.String("image", msg.ImageName))
-	pullResp, err := e.docker.ImagePull(runCtx, msg.ImageName, types.ImagePullOptions{})
+	pullResp, err := e.docker.ImagePull(runCtx, msg.ImageName, image.PullOptions{})
 	if err != nil {
 		return e.failRun(ctx, msg.RunID, fmt.Sprintf("image pull failed: %v", err))
 	}
@@ -102,13 +102,13 @@ func (e *ExecutorService) Execute(ctx context.Context, msg *RunMessage) error {
 	}
 
 	// Start container
-	if err := e.docker.ContainerStart(runCtx, containerID, types.ContainerStartOptions{}); err != nil {
-		_ = e.docker.ContainerRemove(ctx, containerID, types.ContainerRemoveOptions{Force: true})
-		return e.failRun(ctx, msg.RunID, fmt.Sprintf("container start failed: %v", err))
+	if err := e.docker.ContainerStart(runCtx, containerID, container.StartOptions{}); err != nil {
+		_ = e.docker.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true})
+	return e.failRun(ctx, msg.RunID, fmt.Sprintf("container start failed: %v", err))
 	}
 
 	// Stream logs
-	logReader, err := e.docker.ContainerLogs(runCtx, containerID, types.ContainerLogsOptions{
+	logReader, err := e.docker.ContainerLogs(runCtx, containerID, container.LogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
 		Follow:     true,
@@ -140,7 +140,7 @@ func (e *ExecutorService) Execute(ctx context.Context, msg *RunMessage) error {
 		// Cancelled
 		_ = e.docker.ContainerStop(ctx, containerID, container.StopOptions{})
 		_ = e.queries.UpdateRunFinished(ctx, msg.RunID, model.StatusCancelled, -1, "run cancelled", nil)
-		_ = e.docker.ContainerRemove(ctx, containerID, types.ContainerRemoveOptions{Force: true})
+		_ = e.docker.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true})
 		return nil
 	}
 
@@ -157,7 +157,7 @@ func (e *ExecutorService) Execute(ctx context.Context, msg *RunMessage) error {
 	}
 
 	// Cleanup container
-	_ = e.docker.ContainerRemove(ctx, containerID, types.ContainerRemoveOptions{Force: true})
+	_ = e.docker.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true})
 
 	e.log.Info("run completed",
 		zap.String("run_id", msg.RunID),
