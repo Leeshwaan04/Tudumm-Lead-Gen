@@ -63,7 +63,7 @@ func main() {
 	}
 
 	// Watchdog
-	watchdog := domain.NewWatchdog(pgStore, redisStore, sm, log)
+	watchdog := domain.NewWatchdog(pgStore, sm, log)
 	go watchdog.Run(context.Background())
 
 	// Cron scheduler
