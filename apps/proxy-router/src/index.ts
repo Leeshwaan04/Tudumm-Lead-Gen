@@ -7,6 +7,16 @@ const app = express();
 
 app.use(express.json({ limit: '10mb' }));
 
+// Internal service auth — require X-Internal-Secret header on all proxy routes
+app.use('/v1/proxy', (req, res, next) => {
+  const secret = process.env.INTERNAL_API_SECRET;
+  if (secret && req.headers['x-internal-secret'] !== secret) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+  next();
+});
+
 // Routes
 app.use('/v1/proxy', proxyRouter);
 
