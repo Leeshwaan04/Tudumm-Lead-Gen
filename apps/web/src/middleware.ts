@@ -5,11 +5,13 @@ export default auth((req) => {
   const { pathname } = req.nextUrl
   const isAuth = !!req.auth
   const isAuthPage = pathname.startsWith('/login') || pathname.startsWith('/signup')
-  const isDashboard = pathname.startsWith('/dashboard') || pathname === '/actors' ||
-    pathname === '/datasets' || pathname === '/workflows' || pathname === '/enrichment' ||
-    pathname === '/settings' || pathname === '/playbooks' || pathname === '/linkedin' ||
-    pathname === '/schedules' || pathname === '/billing' || pathname === '/proxy' ||
-    pathname === '/store' || pathname === '/phantoms'
+  const protectedPrefixes = [
+    '/dashboard', '/actors', '/datasets', '/workflows', '/enrichment',
+    '/settings', '/playbooks', '/linkedin', '/schedules', '/billing',
+    '/proxy', '/store', '/phantoms', '/leads', '/sequences', '/runs',
+    '/analytics', '/members', '/webhooks', '/usage',
+  ]
+  const isDashboard = protectedPrefixes.some(p => pathname === p || pathname.startsWith(p + '/'))
 
   if (isDashboard && !isAuth) {
     return NextResponse.redirect(new URL('/login', req.url))
