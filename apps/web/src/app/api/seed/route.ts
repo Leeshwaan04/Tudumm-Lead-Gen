@@ -12,7 +12,7 @@ export async function POST() {
       { cwd: path.join(process.cwd()), stdio: 'pipe', env: { ...process.env } }
     )
     return NextResponse.json({ ok: true })
-  } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 })
+  } catch {
+    return NextResponse.json({ error: 'Seed failed' }, { status: 500 })
   }
 }
