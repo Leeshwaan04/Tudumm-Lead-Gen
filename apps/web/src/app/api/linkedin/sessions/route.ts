@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
+import { encryptCookie } from '@/lib/cookie-cipher'
 
 export async function GET() {
   try {
@@ -12,7 +13,8 @@ export async function GET() {
       where: { workspaceId },
       orderBy: { createdAt: 'desc' },
     })
-    const sanitized = sessions.map(({ sessionCookie, ...s }) => ({ ...s, cookieSet: true }))
+    // Never return the cookie to the client — callers only need to know it's set
+    const sanitized = sessions.map(({ sessionCookie, ...s }) => ({ ...s, cookieSet: !!sessionCookie }))
     return NextResponse.json(sanitized)
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
@@ -28,8 +30,12 @@ export async function POST(req: Request) {
     const body = await req.json()
     const alias = body.alias ?? body.accountName ?? 'Unnamed'
     const email = body.email ?? body.accountEmail ?? `li-${Date.now()}@placeholder.com`
-    const sessionCookie = body.sessionCookie ?? body.cookie ?? ''
+    const rawCookie = body.sessionCookie ?? body.cookie ?? ''
     const { dailyLimit } = body
+
+    // Encrypt before persisting — decryption happens server-side only when injecting into browser
+    const sessionCookie = rawCookie ? encryptCookie(rawCookie) : ''
+
     const created = await prisma.linkedInSession.create({
       data: {
         workspaceId,
@@ -40,7 +46,7 @@ export async function POST(req: Request) {
       },
     })
     const { sessionCookie: _cookie, ...createdWithout } = created
-    return NextResponse.json({ ...createdWithout, cookieSet: true }, { status: 201 })
+    return NextResponse.json({ ...createdWithout, cookieSet: !!rawCookie }, { status: 201 })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
