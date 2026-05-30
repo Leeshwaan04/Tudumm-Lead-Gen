@@ -2,6 +2,12 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
 import nodemailer from 'nodemailer'
+import { parseSequenceSteps, SequenceStepError } from '@/lib/sequence-steps'
+
+// Feature flag — LinkedIn automation is not yet wired through browser-service.
+// Until LINKEDIN_SEND_ENABLED=true, sequences on the linkedin platform return a clear error
+// instead of silently faking a send (which previously inflated sentCount + LeadActivity).
+const LINKEDIN_SEND_ENABLED = process.env.LINKEDIN_SEND_ENABLED === 'true'
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -15,8 +21,25 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     if (!sequence) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     if (sequence.status !== 'ACTIVE') return NextResponse.json({ error: 'Sequence is not active' }, { status: 400 })
 
-    const steps: any[] = JSON.parse(sequence.steps ?? '[]')
-    if (steps.length === 0) return NextResponse.json({ error: 'No steps configured' }, { status: 400 })
+    // Block LinkedIn sequences until real send is wired through browser-service.
+    if (sequence.platform === 'linkedin' || sequence.platform === 'LINKEDIN') {
+      if (!LINKEDIN_SEND_ENABLED) {
+        return NextResponse.json(
+          { error: 'LinkedIn sending is not yet enabled. Email sequences are currently supported.' },
+          { status: 503 }
+        )
+      }
+    }
+
+    let steps
+    try {
+      steps = parseSequenceSteps(sequence.steps)
+    } catch (e) {
+      if (e instanceof SequenceStepError) {
+        return NextResponse.json({ error: `Invalid sequence steps: ${e.message}` }, { status: 400 })
+      }
+      throw e
+    }
 
     const now = new Date()
     const pendingLeads = await prisma.sequenceLead.findMany({
@@ -88,12 +111,16 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 }
 
 async function executeStep(step: any, lead: any, platform: string): Promise<boolean> {
-  if (platform === 'EMAIL' || platform === 'MIXED') {
+  if (platform === 'EMAIL' || platform === 'MIXED' || platform === 'email') {
     return sendEmail(step, lead)
   }
-  // LinkedIn: log the action (real automation requires browser session + cookie)
-  console.log(`[Sequence][LinkedIn] ${lead.email ?? lead.fullName}: ${step.message ?? ''}`)
-  return true
+  // LinkedIn path: would dispatch to browser-service /linkedin/connect or /linkedin/message.
+  // Not implemented — the LINKEDIN_SEND_ENABLED gate above prevents reaching this branch in prod.
+  if (!LINKEDIN_SEND_ENABLED) {
+    throw new Error('LinkedIn send not yet wired through browser-service')
+  }
+  // TODO: POST to browser-service /linkedin/send when implemented (Sprint #1)
+  return false
 }
 
 async function sendEmail(step: any, lead: any): Promise<boolean> {

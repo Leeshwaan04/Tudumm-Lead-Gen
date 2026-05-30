@@ -139,6 +139,8 @@ model Run {
   datasets           Dataset[]
   creditTransactions CreditTransaction[]
 
+  @@index([workspaceId, status])
+  @@index([workspaceId, createdAt])
   @@map("runs")
 }
 
@@ -238,6 +240,7 @@ model Lead {
   customFields  String   @default("{}")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+  deletedAt     DateTime?
 
   workspace      Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   list           LeadList?      @relation(fields: [listId], references: [id])
@@ -245,8 +248,9 @@ model Lead {
   sequences      SequenceLead[]
   enrichmentJobs EnrichmentJob[]
 
-  @@index([workspaceId])
-  @@index([email])
+  @@unique([workspaceId, email], name: "lead_workspace_email_unique", map: "leads_workspace_email_unique")
+  @@index([workspaceId, deletedAt])
+  @@index([workspaceId, createdAt])
   @@map("leads")
 }
 
@@ -295,23 +299,28 @@ model Sequence {
   workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   leads     SequenceLead[]
 
+  @@index([workspaceId, status])
   @@map("sequences")
 }
 
 model SequenceLead {
-  id          String    @id @default(cuid())
-  sequenceId  String
-  leadId      String
-  status      String    @default("PENDING")
-  currentStep Int       @default(0)
-  lastStepAt  DateTime?
-  nextStepAt  DateTime?
-  addedAt     DateTime  @default(now())
+  id            String    @id @default(cuid())
+  sequenceId    String
+  leadId        String
+  status        String    @default("PENDING")
+  currentStep   Int       @default(0)
+  lastStepAt    DateTime?
+  nextStepAt    DateTime?
+  addedAt       DateTime  @default(now())
+  // Claim/lease fields for safe concurrent processing
+  claimedAt     DateTime?
+  claimedBy     String?
 
   sequence Sequence @relation(fields: [sequenceId], references: [id], onDelete: Cascade)
   lead     Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
 
   @@unique([sequenceId, leadId])
+  @@index([status, nextStepAt])
   @@map("sequence_leads")
 }
 
@@ -448,13 +457,37 @@ model Playbook {
   category    String
   platform    String
   stages      String   @default("[]")
-  isPublic    Boolean  @default(true)
+  isPublic    Boolean  @default(false)
   totalRuns   Int      @default(0)
   createdAt   DateTime @default(now())
 
-  workspace Workspace? @relation(fields: [workspaceId], references: [id])
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
+  @@index([workspaceId])
   @@map("playbooks")
+}
+
+model ProcessedStripeEvent {
+  id          String   @id          // Stripe event.id, e.g. "evt_..."
+  type        String
+  processedAt DateTime @default(now())
+
+  @@map("processed_stripe_events")
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  workspaceId String?
+  userId      String?
+  action      String   // e.g. "lead.deleted", "member.invited", "session.cookie_uploaded"
+  resourceId  String?
+  metadata    String   @default("{}")
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+
+  @@index([workspaceId, createdAt])
+  @@index([userId, createdAt])
+  @@map("audit_logs")
 }
 
 model ActorInputSchema {

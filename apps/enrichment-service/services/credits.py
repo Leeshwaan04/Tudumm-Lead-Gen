@@ -11,6 +11,7 @@ BILLING_SERVICE_URL = os.environ.get("BILLING_SERVICE_URL", "http://billing-serv
 async def check_credits(workspace_id: str, amount: float = 0) -> bool:
     """
     Check if a workspace has enough credits.
+    Fail-CLOSED: if billing-service is unreachable, deny the request rather than allow free spend.
     """
     url = f"{BILLING_SERVICE_URL}/billing/credits/balance/{workspace_id}"
     try:
@@ -22,8 +23,8 @@ async def check_credits(workspace_id: str, amount: float = 0) -> bool:
             balance = data.get("balance", 0)
             return balance >= amount
     except Exception as e:
-        logger.warning(f"Credit check failed: {e}")
-        return True # Fail-open for now
+        logger.error(f"Credit check failed for workspace {workspace_id}: {e}")
+        return False  # Fail-closed: deny when billing unavailable
 
 async def deduct_credits(
     workspace_id: str,
@@ -56,11 +57,17 @@ async def deduct_credits(
         logger.error(f"Billing service HTTP error: {e}")
         raise
     except httpx.RequestError as e:
-        logger.warning(f"Billing service unavailable, skipping credit deduction: {e}")
-        return {"success": True, "remaining_credits": -1, "transaction_id": None}
+        # Fail-closed: if we cannot reach billing, refuse to silently skip the deduction.
+        # The caller already consumed AI tokens, but better to surface a 503 than spend free forever.
+        logger.error(f"Billing service unavailable, cannot deduct credits: {e}")
+        raise BillingUnavailableError(f"Billing service unavailable: {e}")
 
 
 class InsufficientCreditsError(Exception):
+    pass
+
+
+class BillingUnavailableError(Exception):
     pass
 
 

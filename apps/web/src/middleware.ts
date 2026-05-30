@@ -24,16 +24,20 @@ export default auth((req) => {
     return NextResponse.redirect(new URL('/dashboard', req.url))
   }
 
-  // Generate a per-request nonce for CSP — eliminates need for unsafe-inline/unsafe-eval
+  // Generate a per-request nonce for CSP — eliminates need for unsafe-inline/unsafe-eval on scripts
   const nonce = randomBytes(16).toString('base64')
   const csp = [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}'`,
-    "style-src 'self' 'unsafe-inline'", // Tailwind inlines styles; safe for CSS only
+    // style-src retains unsafe-inline: React 19 emits inline style={{...}} props; CSS cannot exfiltrate data
+    "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: https://avatars.githubusercontent.com https://lh3.googleusercontent.com https://api.dicebear.com",
     "font-src 'self'",
     "connect-src 'self'",
     "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "object-src 'none'",
   ].join('; ')
 
   const response = NextResponse.next()

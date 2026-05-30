@@ -89,6 +89,22 @@ func NewBillingQueries(pool *pgxpool.Pool) *BillingQueries {
 	return &BillingQueries{pool: pool}
 }
 
+// MarkStripeEventProcessed records a Stripe event id so repeat deliveries become no-ops.
+// Returns (true, nil) if this is the first time we see the event, (false, nil) if already processed.
+// Table `processed_stripe_events` is owned by the Prisma schema (see apps/web/prisma/schema.prisma).
+func (q *BillingQueries) MarkStripeEventProcessed(ctx context.Context, eventID, eventType string) (bool, error) {
+	sql := `
+		INSERT INTO processed_stripe_events (id, type, "processedAt")
+		VALUES ($1, $2, NOW())
+		ON CONFLICT (id) DO NOTHING
+	`
+	tag, err := q.pool.Exec(ctx, sql, eventID, eventType)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
+}
+
 func (q *BillingQueries) GetBalance(ctx context.Context, workspaceID string) (*CreditBalance, error) {
 	sql := `SELECT workspace_id, balance, updated_at FROM credit_balances WHERE workspace_id = $1`
 	row := q.pool.QueryRow(ctx, sql, workspaceID)

@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
+import { parseCsv } from '@/lib/csv'
+
+const MAX_RECORDS = 10000
 
 export async function POST(req: Request) {
   try {
@@ -13,16 +16,14 @@ export async function POST(req: Request) {
     const records: any[] = []
 
     if (contentType.includes('application/json')) {
-      // Accept JSON array: [{ name, email, company, ... }]
       const body = await req.json()
       const leads: any[] = Array.isArray(body) ? body : (body.leads ?? [])
       for (const row of leads) {
-        const fullName = row.fullName ?? row.name ?? [row.firstName, row.lastName].filter(Boolean).join(' ')
-        if (!fullName) { errors.push(`Missing name for ${JSON.stringify(row)}`); continue }
-        records.push({ workspaceId, fullName, firstName: row.firstName ?? null, lastName: row.lastName ?? null, email: row.email ?? null, company: row.company ?? null, title: row.title ?? null, linkedinUrl: row.linkedinUrl ?? null })
+        const rec = buildRecord(workspaceId, row)
+        if (rec.error) errors.push(rec.error)
+        else if (rec.data) records.push(rec.data)
       }
     } else {
-      // Multipart CSV file upload
       const formData = await req.formData()
       const file = formData.get('file') as File | null
       if (!file) return NextResponse.json({ error: 'Missing file' }, { status: 400 })
@@ -30,27 +31,69 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'File too large (max 10MB)' }, { status: 413 })
       }
       const text = await file.text()
-      const lines = text.split('\n').map((l: string) => l.trim()).filter(Boolean)
-      if (lines.length < 2) return NextResponse.json({ imported: 0, errors: ['Empty file'] })
-      const headerLine = (lines[0] ?? '').split(',').map((h: string) => h.trim().toLowerCase())
-      for (let i = 1; i < lines.length; i++) {
-        const values = (lines[i] ?? '').split(',').map((v: string) => v.trim())
-        const row: Record<string, string> = {}
-        headerLine.forEach((h, idx) => { row[h] = values[idx] ?? '' })
-        const fullName = row['fullname'] || row['full_name'] || row['name'] || [row['firstname'] || row['first_name'], row['lastname'] || row['last_name']].filter(Boolean).join(' ')
-        if (!fullName) { errors.push(`Row ${i}: missing name`); continue }
-        records.push({ workspaceId, fullName, firstName: row['firstname'] || row['first_name'] || undefined, lastName: row['lastname'] || row['last_name'] || undefined, email: row['email'] || undefined, company: row['company'] || undefined, title: row['title'] || undefined, linkedinUrl: row['linkedinurl'] || row['linkedin_url'] || undefined })
-      }
+      const rows = parseCsv(text)
+      if (rows.length === 0) return NextResponse.json({ imported: 0, errors: ['Empty or unparseable CSV'] })
+
+      rows.forEach((row, idx) => {
+        const normalized = {
+          fullName: row['fullname'] || row['full_name'] || row['name'] ||
+            [row['firstname'] || row['first_name'], row['lastname'] || row['last_name']].filter(Boolean).join(' '),
+          firstName: row['firstname'] || row['first_name'],
+          lastName: row['lastname'] || row['last_name'],
+          email: row['email'],
+          company: row['company'],
+          title: row['title'],
+          linkedinUrl: row['linkedinurl'] || row['linkedin_url'],
+        }
+        const rec = buildRecord(workspaceId, normalized)
+        if (rec.error) errors.push(`Row ${idx + 2}: ${rec.error}`)
+        else if (rec.data) records.push(rec.data)
+      })
     }
 
-    let imported = 0
-    for (const data of records) {
-      try { await prisma.lead.create({ data }); imported++ }
-      catch (e: any) { errors.push(`${data.fullName}: ${e.message}`) }
+    if (records.length > MAX_RECORDS) {
+      return NextResponse.json({ error: `Too many rows (max ${MAX_RECORDS})` }, { status: 413 })
     }
 
-    return NextResponse.json({ imported, errors })
+    // Dedup within the batch first (last write wins on duplicate email)
+    const byEmail = new Map<string, any>()
+    const withoutEmail: any[] = []
+    for (const r of records) {
+      if (r.email) byEmail.set(r.email.toLowerCase(), { ...r, email: r.email.toLowerCase() })
+      else withoutEmail.push(r)
+    }
+    const deduped = [...byEmail.values(), ...withoutEmail]
+
+    // createMany with skipDuplicates leverages @@unique([workspaceId, email]) to skip existing rows
+    const result = await prisma.lead.createMany({
+      data: deduped,
+      skipDuplicates: true,
+    })
+
+    return NextResponse.json({
+      imported: result.count,
+      skipped: deduped.length - result.count,
+      errors,
+    })
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    console.error('[Leads import error]', e)
+    return NextResponse.json({ error: 'Import failed' }, { status: 500 })
+  }
+}
+
+function buildRecord(workspaceId: string, row: any): { data?: any; error?: string } {
+  const fullName = row.fullName ?? row.name ?? [row.firstName, row.lastName].filter(Boolean).join(' ')
+  if (!fullName) return { error: 'missing name' }
+  return {
+    data: {
+      workspaceId,
+      fullName: String(fullName).slice(0, 200),
+      firstName: row.firstName ? String(row.firstName).slice(0, 100) : null,
+      lastName: row.lastName ? String(row.lastName).slice(0, 100) : null,
+      email: row.email ? String(row.email).toLowerCase().slice(0, 200) : null,
+      company: row.company ? String(row.company).slice(0, 200) : null,
+      title: row.title ? String(row.title).slice(0, 200) : null,
+      linkedinUrl: row.linkedinUrl ? String(row.linkedinUrl).slice(0, 500) : null,
+    },
   }
 }

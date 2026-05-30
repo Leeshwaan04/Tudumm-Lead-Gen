@@ -5,7 +5,7 @@ import logging
 
 from services.claude_client import generate_message, generate_structured
 from services.email_service import find_email, verify_email
-from services.credits import deduct_credits, check_credits
+from services.credits import deduct_credits, check_credits, InsufficientCreditsError, BillingUnavailableError
 from services.input_sanitizer import sanitize_text, sanitize_context
 
 router = APIRouter()
@@ -48,6 +48,10 @@ async def enrich_message(request: MessageRequest):
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except InsufficientCreditsError as e:
+        raise HTTPException(status_code=402, detail=str(e))
+    except BillingUnavailableError as e:
+        raise HTTPException(status_code=503, detail="Billing service unavailable, please retry")
     except Exception as e:
         logger.error(f"Message generation failed: {e}")
         raise HTTPException(status_code=500, detail="Message generation failed")
@@ -70,6 +74,10 @@ async def find_person_email(request: EmailFindRequest):
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except InsufficientCreditsError as e:
+        raise HTTPException(status_code=402, detail=str(e))
+    except BillingUnavailableError as e:
+        raise HTTPException(status_code=503, detail="Billing service unavailable, please retry")
     except Exception as e:
         logger.error(f"Email discovery failed: {e}")
         raise HTTPException(status_code=500, detail="Email discovery failed")
@@ -87,6 +95,10 @@ async def verify_person_email(request: VerifyRequest):
             "result": result,
             "credits_remaining": await check_credits(request.user_id)
         }
+    except InsufficientCreditsError as e:
+        raise HTTPException(status_code=402, detail=str(e))
+    except BillingUnavailableError as e:
+        raise HTTPException(status_code=503, detail="Billing service unavailable, please retry")
     except Exception as e:
         logger.error(f"Email verification failed: {e}")
         raise HTTPException(status_code=500, detail="Email verification failed")
@@ -109,6 +121,10 @@ async def summarize_profile(request: MessageRequest):
         }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except InsufficientCreditsError as e:
+        raise HTTPException(status_code=402, detail=str(e))
+    except BillingUnavailableError as e:
+        raise HTTPException(status_code=503, detail="Billing service unavailable, please retry")
     except Exception as e:
         logger.error(f"Profile summarization failed: {e}")
         raise HTTPException(status_code=500, detail="Profile summarization failed")

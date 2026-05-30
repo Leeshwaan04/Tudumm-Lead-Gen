@@ -42,7 +42,22 @@ func (h *WebhookHandler) Handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.log.Info("stripe webhook received", zap.String("type", string(event.Type)))
+	h.log.Info("stripe webhook received", zap.String("type", string(event.Type)), zap.String("id", event.ID))
+
+	// Idempotency guard: if we've already processed this event, ack and return.
+	// Prevents double-crediting on Stripe retries.
+	firstTime, err := h.queries.MarkStripeEventProcessed(r.Context(), event.ID, string(event.Type))
+	if err != nil {
+		h.log.Error("idempotency check failed", zap.Error(err), zap.String("event_id", event.ID))
+		respondError(w, http.StatusInternalServerError, "idempotency check failed")
+		return
+	}
+	if !firstTime {
+		h.log.Info("stripe event already processed, skipping", zap.String("event_id", event.ID))
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"received":true,"duplicate":true}`)) //nolint:errcheck
+		return
+	}
 
 	switch event.Type {
 	case "invoice.payment_succeeded":

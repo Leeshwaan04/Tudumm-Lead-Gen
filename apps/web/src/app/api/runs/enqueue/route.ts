@@ -3,23 +3,34 @@ import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
 import { runQueue } from '@/lib/queue'
 
+// Slug validation: alphanumerics, dashes, underscores only. No path traversal, no shell metachars.
+const ACTOR_SLUG_PATTERN = /^[a-z0-9][a-z0-9_-]{2,63}$/i
+
 export async function POST(req: Request) {
   const session = await auth()
   const workspaceId = (session as any)?.workspaceId
   if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { actorId, input } = await req.json()
+  if (!actorId || typeof actorId !== 'string') {
+    return NextResponse.json({ error: 'actorId is required' }, { status: 400 })
+  }
+  if (!ACTOR_SLUG_PATTERN.test(actorId)) {
+    return NextResponse.json({ error: 'Invalid actorId format' }, { status: 400 })
+  }
 
-  // Find actor — if not found by id, try by slug (store actors use slugs as ids)
-  // Always filter by workspaceId to prevent cross-workspace access
+  // Resolve actor strictly: must exist in this workspace OR be a published marketplace actor.
+  // Auto-creation is removed — it allowed arbitrary image names to be queued.
   let actor = await prisma.actor.findFirst({ where: { id: actorId, workspaceId } })
   if (!actor) actor = await prisma.actor.findFirst({ where: { slug: actorId, workspaceId } })
-  // Auto-create ephemeral actor record for store/marketplace actors
   if (!actor) {
-    const userId = session?.user?.id!
-    actor = await prisma.actor.create({
-      data: { workspaceId, authorId: userId, name: actorId, slug: actorId + '-' + Date.now(), description: '', status: 'DRAFT' },
+    // Marketplace path: only PUBLISHED + isPublic actors are runnable across workspaces
+    actor = await prisma.actor.findFirst({
+      where: { slug: actorId, isPublic: true, status: 'PUBLISHED' },
     })
+  }
+  if (!actor) {
+    return NextResponse.json({ error: 'Actor not found or not accessible' }, { status: 404 })
   }
 
   const inputJson = JSON.stringify(input ?? {})
@@ -28,7 +39,14 @@ export async function POST(req: Request) {
   })
 
   try {
-    await runQueue.add('run', { runId: run.id, actorId: actor.id, workspaceId, input: input ?? {}, actorSlug: actor.slug, imageName: `tudumm/actor-${actor.slug}:latest` })
+    await runQueue.add('run', {
+      runId: run.id,
+      actorId: actor.id,
+      workspaceId,
+      input: input ?? {},
+      actorSlug: actor.slug,
+      imageName: `tudumm/actor-${actor.slug}:latest`,
+    })
   } catch {
     // Redis not available in local dev — run stays QUEUED
   }

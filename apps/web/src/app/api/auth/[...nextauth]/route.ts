@@ -4,7 +4,7 @@ import { rateLimit, getClientIp } from '@/lib/rate-limit'
 
 export const { GET } = handlers
 
-export async function POST(req: Request, ctx: any) {
+export async function POST(req: Request) {
   // Apply rate limiting only to the credentials sign-in action
   const url = new URL(req.url)
   if (url.pathname.endsWith('/callback/credentials')) {
@@ -13,5 +13,5 @@ export async function POST(req: Request, ctx: any) {
       return NextResponse.json({ error: 'Too many login attempts. Please try again later.' }, { status: 429 })
     }
   }
-  return handlers.POST(req, ctx)
+  return (handlers.POST as any)(req)
 }
