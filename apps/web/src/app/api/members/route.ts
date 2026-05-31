@@ -2,6 +2,31 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { requireMember, requireAdmin } from '@/lib/authz'
 import { randomBytes } from 'crypto'
+import nodemailer from 'nodemailer'
+
+function getMailer() {
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST ?? 'localhost',
+    port: parseInt(process.env.SMTP_PORT ?? '587', 10),
+    secure: process.env.SMTP_PORT === '465',
+    auth: process.env.SMTP_USER
+      ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+      : undefined,
+  } as any)
+}
+
+async function sendInviteEmail(to: string, acceptUrl: string, workspaceName: string) {
+  const mailer = getMailer()
+  await mailer.sendMail({
+    from: process.env.EMAIL_FROM ?? 'noreply@tudumm.io',
+    to,
+    subject: `You've been invited to ${workspaceName} on Tudumm`,
+    text: `You've been invited to join ${workspaceName} on Tudumm.\n\nAccept your invitation here:\n${acceptUrl}\n\nThis link expires in 7 days.`,
+    html: `<p>You've been invited to join <strong>${workspaceName}</strong> on Tudumm.</p>
+<p><a href="${acceptUrl}" style="background:#6d28d9;color:#fff;padding:10px 20px;border-radius:8px;text-decoration:none;display:inline-block;margin:16px 0">Accept Invitation</a></p>
+<p style="color:#6b7280;font-size:12px">This link expires in 7 days. If you didn't expect this invitation, you can ignore this email.</p>`,
+  })
+}
 
 const INVITE_TTL_DAYS = 7
 
@@ -73,9 +98,12 @@ export async function POST(req: Request) {
       create: { workspaceId, email: normalizedEmail, role: role ?? 'MEMBER', token, invitedBy: ctx.userId, expiresAt },
     })
 
-    // TODO: send invite email via SMTP. For now, return the accept URL so the
-    // caller (UI) can surface/copy it. Wire nodemailer once SMTP creds are set.
     const acceptUrl = `${process.env.APP_URL ?? 'https://app.tudumm.io'}/accept-invite?token=${token}`
+
+    // Send invite email — fire-and-forget so a mail failure doesn't block the response
+    sendInviteEmail(normalizedEmail, acceptUrl, workspace.name).catch(err =>
+      console.error('[Invite email failed]', err)
+    )
 
     return NextResponse.json(
       { id: invite.id, email: invite.email, role: invite.role, expiresAt: invite.expiresAt, acceptUrl },

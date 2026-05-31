@@ -3,6 +3,26 @@ import { prisma } from '@/lib/db'
 import bcrypt from 'bcryptjs'
 import { rateLimit, getClientIp } from '@/lib/rate-limit'
 import crypto from 'crypto'
+import nodemailer from 'nodemailer'
+
+async function sendVerificationEmail(to: string, token: string) {
+  const url = `${process.env.APP_URL ?? 'https://app.tudumm.io'}/api/auth/verify?token=${token}`
+  const mailer = nodemailer.createTransport({
+    host: process.env.SMTP_HOST ?? 'localhost',
+    port: parseInt(process.env.SMTP_PORT ?? '587', 10),
+    secure: process.env.SMTP_PORT === '465',
+    auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined,
+  } as any)
+  await mailer.sendMail({
+    from: process.env.EMAIL_FROM ?? 'noreply@tudumm.io',
+    to,
+    subject: 'Verify your Tudumm account',
+    text: `Click this link to verify your email:\n\n${url}\n\nExpires in 24 hours.`,
+    html: `<p>Thanks for signing up! Click below to verify your email:</p>
+<p><a href="${url}" style="background:#6d28d9;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;display:inline-block;margin:16px 0">Verify Email</a></p>
+<p style="color:#6b7280;font-size:12px">This link expires in 24 hours.</p>`,
+  })
+}
 
 export async function POST(req: Request) {
   const ip = getClientIp(req)
@@ -53,6 +73,21 @@ export async function POST(req: Request) {
         },
       },
     })
+    // Store verify token in AuditLog (lightweight — no dedicated EmailToken model yet)
+    const verifyToken = crypto.randomBytes(32).toString('hex')
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'email.verify_token',
+        metadata: JSON.stringify({ token: verifyToken, expiresAt: Date.now() + 86_400_000 }),
+      },
+    }).catch(() => { /* non-fatal */ })
+
+    // Fire-and-forget — mail failure must not block signup
+    sendVerificationEmail(email, verifyToken).catch(err =>
+      console.error('[Verification email failed]', err)
+    )
+
     return NextResponse.json({ id: user.id, email: user.email })
   } catch (e) {
     console.error(e)

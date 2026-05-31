@@ -214,6 +214,42 @@ func (q *BillingQueries) ListInvoices(ctx context.Context, workspaceID string, l
 	return invoices, rows.Err()
 }
 
+// planLimits maps Stripe plan names (from sub.Metadata["plan"]) to workspace resource limits.
+// Keys match what Stripe metadata "plan" is set to when creating subscriptions.
+var planLimits = map[string]struct {
+	plan           string
+	execHoursLimit float64
+	slots          int
+	aiCredits      int
+	emailCredits   int
+}{
+	"starter":    {"STARTER", 10, 3, 1000, 500},
+	"grow":       {"GROW", 100, 10, 10000, 5000},
+	"scale":      {"SCALE", 500, 50, 100000, 50000},
+	"enterprise": {"SCALE", 99999, 200, 999999, 999999},
+}
+
+// UpdateWorkspacePlan syncs plan limits back to the workspaces table in Postgres.
+// This is the Prisma-managed table; billing-service shares the same DB connection.
+func (q *BillingQueries) UpdateWorkspacePlan(ctx context.Context, workspaceID, planKey string) error {
+	limits, ok := planLimits[planKey]
+	if !ok {
+		return nil // unknown plan — don't overwrite
+	}
+	sql := `
+		UPDATE workspaces
+		SET plan = $2,
+		    "execHoursLimit" = $3,
+		    slots = $4,
+		    "aiCredits" = $5,
+		    "emailCredits" = $6
+		WHERE id = $1
+	`
+	_, err := q.pool.Exec(ctx, sql,
+		workspaceID, limits.plan, limits.execHoursLimit, limits.slots, limits.aiCredits, limits.emailCredits)
+	return err
+}
+
 func (q *BillingQueries) InsertInvoice(ctx context.Context, inv *Invoice) error {
 	sql := `INSERT INTO invoices (id, workspace_id, stripe_invoice_id, amount_cents, currency, status,
 	                              period_start, period_end, paid_at, invoice_url, created_at)

@@ -439,6 +439,7 @@ export default function SequencesPage() {
 
   async function removeLead(leadId: string) {
     if (!seq) return
+    if (!window.confirm('Remove this lead from the sequence? Their progress will be lost.')) return
     try {
       const res = await fetch(`/api/sequences/${seq.id}/leads`, {
         method: 'DELETE',

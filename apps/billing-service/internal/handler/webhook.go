@@ -146,6 +146,18 @@ func (h *WebhookHandler) handleSubscriptionUpdated(r *http.Request, event stripe
 	existing.CurrentPeriodStart = time.Unix(sub.CurrentPeriodStart, 0).UTC()
 	existing.CurrentPeriodEnd = time.Unix(sub.CurrentPeriodEnd, 0).UTC()
 	existing.UpdatedAt = time.Now().UTC()
+
+	// Sync plan name from subscription metadata and update workspace resource limits
+	planKey := sub.Metadata["plan"]
+	if planKey != "" {
+		existing.PlanName = model.PlanName(planKey)
+		if err := h.queries.UpdateWorkspacePlan(r.Context(), workspaceID, planKey); err != nil {
+			h.log.Error("sync workspace plan limits", zap.Error(err), zap.String("plan", planKey))
+		} else {
+			h.log.Info("synced workspace plan limits", zap.String("workspace_id", workspaceID), zap.String("plan", planKey))
+		}
+	}
+
 	if err := h.queries.UpsertSubscription(r.Context(), existing); err != nil {
 		h.log.Error("update subscription", zap.Error(err))
 	}
@@ -171,6 +183,8 @@ func (h *WebhookHandler) handleSubscriptionDeleted(r *http.Request, event stripe
 	existing.PlanName = model.PlanFree
 	existing.UpdatedAt = time.Now().UTC()
 	_ = h.queries.UpsertSubscription(r.Context(), existing)
+	// Downgrade workspace to starter limits on cancellation
+	_ = h.queries.UpdateWorkspacePlan(r.Context(), workspaceID, "starter")
 }
 
 func (h *WebhookHandler) handlePaymentIntentSucceeded(r *http.Request, event stripe.Event) {
