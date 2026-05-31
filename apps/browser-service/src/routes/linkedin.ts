@@ -3,7 +3,7 @@ import pino from 'pino'
 import { BrowserPool } from '../services/BrowserPool'
 
 const logger = pino({ name: 'browser-service:linkedin' })
-export const linkedinRouter = Router()
+export const linkedinRouter: Router = Router()
 
 // Internal Secret Auth Middleware
 linkedinRouter.use((req, res, next) => {
