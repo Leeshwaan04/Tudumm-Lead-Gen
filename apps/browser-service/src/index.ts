@@ -6,6 +6,7 @@ import { BrowserPool } from './services/BrowserPool';
 import { browserRouter } from './routes/browser';
 import { cookieRouter } from './routes/cookie-injection';
 import { setupCDPProxy } from './routes/cdp-proxy';
+import { linkedinRouter } from './routes/linkedin';
 
 const logger = pino({ name: 'browser-service' });
 const app = express();
@@ -18,6 +19,7 @@ app.use(express.json());
 // Main Browser Routes
 app.use('/browser', browserRouter);
 app.use('/browser/cookies', cookieRouter);
+app.use('/linkedin', linkedinRouter);
 
 // Health Check
 app.get('/health', (req, res) => {

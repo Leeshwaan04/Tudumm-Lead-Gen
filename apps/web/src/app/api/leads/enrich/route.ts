@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
+import { requireCredits, refundCredits, InsufficientCreditsError } from '@/lib/plan-gate'
 
 function scoreFromTitle(title?: string | null): number {
   if (!title) return Math.floor(Math.random() * 15) + 60 // 60–74
@@ -47,8 +48,22 @@ export async function POST(req: Request) {
     where: { id: { in: leadIds }, workspaceId }
   })
 
+  if (leads.length === 0) {
+    return NextResponse.json({ enriched: 0, results: [] })
+  }
+
+  try {
+    await requireCredits(workspaceId, leads.length, 'aiCredits', `Enrich ${leads.length} leads`)
+  } catch (err: any) {
+    if (err instanceof InsufficientCreditsError) {
+      return NextResponse.json({ error: err.message }, { status: 402 })
+    }
+    return NextResponse.json({ error: 'Failed to authorize credits' }, { status: 500 })
+  }
+
   // Process in chunks of 5 to avoid rate limits
   const CHUNK_SIZE = 5;
+  let failed = 0;
   for (let i = 0; i < leads.length; i += CHUNK_SIZE) {
     const chunk = leads.slice(i, i + CHUNK_SIZE);
     
@@ -85,6 +100,7 @@ Return JSON with: icpScore (0-100 integer), aiSummary (2-3 sentences about their
             }),
           })
           const data = await response.json()
+          if (!response.ok) throw new Error(data.error?.message || 'API Error')
           const text = data.content?.[0]?.text ?? '{}'
           const jsonMatch = text.match(/\{[\s\S]*\}/)
           const parsed = JSON.parse(jsonMatch?.[0] ?? '{}')
@@ -92,10 +108,8 @@ Return JSON with: icpScore (0-100 integer), aiSummary (2-3 sentences about their
           aiSummary = parsed.aiSummary ?? parsed.summary ?? ''
           outreachAngle = parsed.outreachAngle ?? parsed.angle ?? ''
         } catch {
-          const mock = buildMockEnrichment(lead)
-          icpScore = mock.icpScore
-          aiSummary = mock.aiSummary
-          outreachAngle = mock.outreachAngle
+          failed++
+          return // Skip updating database and result push
         }
       }
 
@@ -107,6 +121,10 @@ Return JSON with: icpScore (0-100 integer), aiSummary (2-3 sentences about their
       results.push({ id: lead.id, icpScore, aiSummary })
       enriched++
     }))
+  }
+
+  if (failed > 0) {
+    await refundCredits(workspaceId, failed, 'aiCredits', `Refund for ${failed} failed enrichments`)
   }
 
   return NextResponse.json({ enriched, results })

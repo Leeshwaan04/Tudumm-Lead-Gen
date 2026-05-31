@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
 import { runQueue } from '@/lib/queue'
+import { requireCredits, refundCredits, InsufficientCreditsError } from '@/lib/plan-gate'
 
 // Slug validation: alphanumerics, dashes, underscores only. No path traversal, no shell metachars.
 const ACTOR_SLUG_PATTERN = /^[a-z0-9][a-z0-9_-]{2,63}$/i
@@ -14,8 +15,13 @@ export async function POST(req: Request) {
   const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } })
   if (!workspace) return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
 
-  if (workspace.creditBalance <= 0) {
-    return NextResponse.json({ error: 'Insufficient credits' }, { status: 402 })
+  try {
+    await requireCredits(workspaceId, 1, 'creditBalance', 'Actor run enqueue')
+  } catch (err: any) {
+    if (err instanceof InsufficientCreditsError) {
+      return NextResponse.json({ error: err.message }, { status: 402 })
+    }
+    return NextResponse.json({ error: 'Failed to authorize credits' }, { status: 500 })
   }
 
   const { actorId, input } = await req.json()
@@ -56,6 +62,10 @@ export async function POST(req: Request) {
     })
   } catch {
     // Redis not available in local dev — run stays QUEUED
+    // Assuming run failed to enqueue, refund the credit
+    await refundCredits(workspaceId, 1, 'creditBalance', 'Actor run enqueue failed')
+    await prisma.run.update({ where: { id: run.id }, data: { status: 'FAILED', errorMessage: 'Queue error' } })
+    return NextResponse.json({ error: 'Failed to enqueue run' }, { status: 500 })
   }
 
   return NextResponse.json(run, { status: 201 })
