@@ -34,6 +34,7 @@
     "bullmq": "^5.76.6",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "csv-parse": "^6.2.1",
     "date-fns": "^4.1.0",
     "lucide-react": "^0.468.0",
     "minio": "^8.0.7",
@@ -45,10 +46,12 @@
     "react-dom": "^19.0.0",
     "reactflow": "^11.11.4",
     "recharts": "^2.13.3",
+    "sonner": "^2.0.7",
     "tailwind-merge": "^2.5.5",
     "zustand": "^5.0.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^22.10.2",
     "@types/nodemailer": "^8.0.0",

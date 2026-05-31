@@ -186,8 +186,32 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(r *http.Request, event str
 		return
 	}
 
+	// B-9: Only USD is supported for the 1 cent = 1 credit conversion. A non-USD
+	// payment (e.g. INR/JPY) would otherwise massively over-credit because the
+	// minor-unit-to-credit ratio differs by currency. Reject anything else.
+	if pi.Currency != stripe.CurrencyUSD {
+		h.log.Error("rejecting non-USD credit topup",
+			zap.String("currency", string(pi.Currency)),
+			zap.String("payment_intent", pi.ID),
+			zap.String("workspace_id", workspaceID),
+		)
+		return
+	}
+
 	// Convert cents to credits (1 cent = 1 credit)
 	credits := pi.AmountReceived
+
+	// B-9: sanity bounds — reject absurd amounts that indicate a misconfigured
+	// or malicious PaymentIntent. Max single top-up = $10,000 (1,000,000 credits).
+	const maxCreditsPerTopup = int64(1_000_000)
+	if credits <= 0 || credits > maxCreditsPerTopup {
+		h.log.Error("rejecting out-of-bounds credit topup",
+			zap.Int64("credits", credits),
+			zap.String("payment_intent", pi.ID),
+		)
+		return
+	}
+
 	_, err := h.credits.AddCredits(r.Context(), workspaceID, credits, model.TxTopup,
 		"Credit top-up via Stripe", pi.ID)
 	if err != nil {

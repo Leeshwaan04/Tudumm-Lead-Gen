@@ -7,6 +7,7 @@ import {
   Brain, Mail, Phone, Linkedin, Twitter, Zap, RefreshCw, ChevronRight, X,
   Copy, Check, Loader2, Trash2, MessageSquare,
 } from 'lucide-react'
+import { toast } from 'sonner'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface LeadList { id: string; name: string; leadCount: number; createdAt: string }
@@ -22,26 +23,7 @@ interface Activity {
   id: string; type: string; note: string | null; createdAt: string
 }
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
-type ToastType = 'success' | 'error'
-interface ToastMessage { id: number; type: ToastType; message: string }
 
-let toastId = 0
-function Toast({ toasts, onRemove }: { toasts: ToastMessage[]; onRemove: (id: number) => void }) {
-  return (
-    <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
-      {toasts.map(t => (
-        <div key={t.id}
-          className={`flex items-center gap-2 px-4 py-3 rounded-xl shadow-xl border text-sm font-medium animate-in slide-in-from-bottom-2 duration-200
-            ${t.type === 'success' ? 'bg-green-900/80 border-green-500/30 text-green-300' : 'bg-red-900/80 border-red-500/30 text-red-300'}`}>
-          {t.type === 'success' ? <Check className="h-4 w-4 shrink-0" /> : <XCircle className="h-4 w-4 shrink-0" />}
-          <span>{t.message}</span>
-          <button onClick={() => onRemove(t.id)} className="ml-2 opacity-60 hover:opacity-100"><X className="h-3.5 w-3.5" /></button>
-        </div>
-      ))}
-    </div>
-  )
-}
 
 // ─── Confirm Dialog ───────────────────────────────────────────────────────────
 function ConfirmDialog({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) {
@@ -82,7 +64,7 @@ function initials(lead: Lead) {
 }
 
 // ─── Sequence Picker Modal ────────────────────────────────────────────────────
-function SequenceModal({ leadId, onClose, showToast }: { leadId: string; onClose: () => void; showToast: (type: ToastType, message: string) => void }) {
+function SequenceModal({ leadId, onClose }: { leadId: string; onClose: () => void }) {
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
   const { data: seqs = [] } = useQuery<any[]>({
@@ -101,7 +83,7 @@ function SequenceModal({ leadId, onClose, showToast }: { leadId: string; onClose
       setSuccess(true)
       setTimeout(onClose, 1000)
     } catch (err: any) {
-      showToast('error', err?.message ?? 'Failed to add to sequence')
+      toast.error(err?.message ?? 'Failed to add to sequence')
     } finally {
       setLoading(false)
     }
@@ -131,7 +113,7 @@ function SequenceModal({ leadId, onClose, showToast }: { leadId: string; onClose
 }
 
 // ─── Right Detail Panel ───────────────────────────────────────────────────────
-function LeadPanel({ lead, onClose, showToast }: { lead: Lead; onClose: () => void; showToast: (type: ToastType, message: string) => void }) {
+function LeadPanel({ lead, onClose }: { lead: Lead; onClose: () => void }) {
   const qc = useQueryClient()
   const [copied, setCopied] = useState(false)
   const [actType, setActType] = useState('NOTE')
@@ -151,18 +133,33 @@ function LeadPanel({ lead, onClose, showToast }: { lead: Lead; onClose: () => vo
   async function logActivity() {
     if (!actNote.trim()) return
     setLoggingAct(true)
+    
+    // Optimistic update
+    const previousActivities = qc.getQueryData<Activity[]>(['lead-activities', lead.id])
+    const newActivity: Activity = {
+      id: 'temp-' + Date.now(),
+      type: actType,
+      note: actNote,
+      createdAt: new Date().toISOString()
+    }
+    qc.setQueryData<Activity[]>(['lead-activities', lead.id], (old) => [newActivity, ...(old || [])])
+    
+    const savedNote = actNote
+    setActNote('')
+    
     try {
       const res = await fetch(`/api/leads/${lead.id}/activities`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: actType, note: actNote }),
+        body: JSON.stringify({ type: actType, note: savedNote }),
       })
       if (!res.ok) throw new Error('Failed to log activity')
       qc.invalidateQueries({ queryKey: ['lead-activities', lead.id] })
-      setActNote('')
-      showToast('success', 'Activity logged')
+      toast.success('Activity logged')
     } catch (err: any) {
-      showToast('error', err?.message ?? 'Failed to log activity')
+      qc.setQueryData(['lead-activities', lead.id], previousActivities)
+      setActNote(savedNote)
+      toast.error(err?.message ?? 'Failed to log activity')
     } finally {
       setLoggingAct(false)
     }
@@ -178,7 +175,7 @@ function LeadPanel({ lead, onClose, showToast }: { lead: Lead; onClose: () => vo
 
   return (
     <>
-      {showSeqModal && <SequenceModal leadId={lead.id} onClose={() => setShowSeqModal(false)} showToast={showToast} />}
+      {showSeqModal && <SequenceModal leadId={lead.id} onClose={() => setShowSeqModal(false)} />}
       <div className="w-80 shrink-0 border-l border-white/10 flex flex-col overflow-y-auto animate-in slide-in-from-right duration-200">
         {/* Header */}
         <div className="p-4 border-b border-white/10 flex items-start justify-between gap-2">
@@ -328,18 +325,7 @@ export default function LeadsPage() {
   const [seqLeadId, setSeqLeadId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; event: React.MouseEvent } | null>(null)
-  const [toasts, setToasts] = useState<ToastMessage[]>([])
   const PAGE_SIZE = 20
-
-  function showToast(type: ToastType, message: string) {
-    const id = ++toastId
-    setToasts(prev => [...prev, { id, type, message }])
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000)
-  }
-
-  function removeToast(id: number) {
-    setToasts(prev => prev.filter(t => t.id !== id))
-  }
 
   // Debounce search
   useEffect(() => {
@@ -352,35 +338,27 @@ export default function LeadsPage() {
     queryFn: () => fetch('/api/leads/lists').then(r => r.json()),
   })
 
-  const { data: leadsRaw = [], isLoading } = useQuery<Lead[]>({
-    queryKey: ['leads', selectedListId],
+  const { data: leadsData, isLoading } = useQuery<{ leads: Lead[], total: number }>({
+    queryKey: ['leads', selectedListId, debouncedSearch, icpFilter, emailFilter, page],
     queryFn: () => {
-      const p = new URLSearchParams({ limit: '500' })
+      const p = new URLSearchParams({ 
+        limit: PAGE_SIZE.toString(), 
+        offset: (page * PAGE_SIZE).toString() 
+      })
       if (selectedListId) p.set('listId', selectedListId)
-      return fetch(`/api/leads?${p}`).then(r => r.json()).then(d => Array.isArray(d) ? d : (d.leads ?? []))
+      if (debouncedSearch) p.set('search', debouncedSearch)
+      if (icpFilter !== 'all') p.set('icpFilter', icpFilter)
+      if (emailFilter !== 'all') p.set('emailFilter', emailFilter)
+      return fetch(`/api/leads?${p}`).then(r => r.json())
     },
   })
 
-  // Client-side filter + paginate
-  const filtered = leadsRaw.filter(lead => {
-    const name = `${lead.firstName} ${lead.lastName} ${lead.email ?? ''} ${lead.company ?? ''}`.toLowerCase()
-    const matchSearch = !debouncedSearch || name.includes(debouncedSearch.toLowerCase())
-    const matchIcp = icpFilter === 'all' ? true
-      : icpFilter === '80+' ? (lead.icpScore ?? 0) >= 80
-      : icpFilter === '60-79' ? (lead.icpScore ?? 0) >= 60 && (lead.icpScore ?? 0) < 80
-      : (lead.icpScore ?? 0) < 60
-    const matchEmail = emailFilter === 'all' ? true
-      : emailFilter === 'VERIFIED' ? lead.emailStatus === 'VERIFIED'
-      : emailFilter === 'RISKY' ? lead.emailStatus === 'RISKY'
-      : lead.emailStatus === 'NOT_FOUND' || !lead.emailStatus
-    return matchSearch && matchIcp && matchEmail
-  })
+  const leads = leadsData?.leads ?? []
+  const totalLeads = leadsData?.total ?? 0
+  const totalPages = Math.max(1, Math.ceil(totalLeads / PAGE_SIZE))
 
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
-  const paginated = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
-
-  const verifiedCount = leadsRaw.filter(l => l.emailStatus === 'VERIFIED').length
-  const avgIcp = leadsRaw.length > 0 ? Math.round(leadsRaw.reduce((s, l) => s + (l.icpScore ?? 0), 0) / leadsRaw.length) : 0
+  const verifiedCount = leads.filter(l => l.emailStatus === 'VERIFIED').length
+  const avgIcp = leads.length > 0 ? Math.round(leads.reduce((s, l) => s + (l.icpScore ?? 0), 0) / leads.length) : 0
 
   async function createList() {
     if (!newListName.trim()) return
@@ -404,7 +382,7 @@ export default function LeadsPage() {
       if (!res.ok) throw new Error('Import failed')
       qc.invalidateQueries({ queryKey: ['leads'] })
     } catch (err: any) {
-      showToast('error', err?.message ?? 'Failed to import CSV')
+      toast.error(err?.message ?? 'Failed to import CSV')
     } finally {
       setImporting(false)
       if (fileRef.current) fileRef.current.value = ''
@@ -423,7 +401,7 @@ export default function LeadsPage() {
       const a = document.createElement('a'); a.href = url; a.download = 'leads.csv'; a.click()
       URL.revokeObjectURL(url)
     } catch (err: any) {
-      showToast('error', err?.message ?? 'Failed to export leads')
+      toast.error(err?.message ?? 'Failed to export leads')
     }
   }
 
@@ -433,12 +411,12 @@ export default function LeadsPage() {
       const res = await fetch('/api/leads/enrich', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: filtered.map(l => l.id) }),
+        body: JSON.stringify({ leadIds: leads.map(l => l.id) }),
       })
       if (!res.ok) throw new Error('Enrichment failed')
       qc.invalidateQueries({ queryKey: ['leads'] })
     } catch (err: any) {
-      showToast('error', err?.message ?? 'Failed to enrich leads')
+      toast.error(err?.message ?? 'Failed to enrich leads')
     } finally {
       setEnrichingAll(false)
     }
@@ -451,12 +429,12 @@ export default function LeadsPage() {
       const res = await fetch('/api/leads/enrich', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: [leadId] }),
+        body: JSON.stringify({ leadIds: [leadId] }),
       })
       if (!res.ok) throw new Error('Enrichment failed')
       qc.invalidateQueries({ queryKey: ['leads'] })
     } catch (err: any) {
-      showToast('error', err?.message ?? 'Failed to enrich lead')
+      toast.error(err?.message ?? 'Failed to enrich lead')
     } finally {
       setEnrichingId(null)
     }
@@ -478,7 +456,7 @@ export default function LeadsPage() {
       qc.invalidateQueries({ queryKey: ['leads'] })
       if (selectedLead?.id === leadId) setSelectedLead(null)
     } catch (err: any) {
-      showToast('error', err?.message ?? 'Failed to delete lead')
+      toast.error(err?.message ?? 'Failed to delete lead')
     } finally {
       setDeletingId(null)
     }
@@ -486,7 +464,6 @@ export default function LeadsPage() {
 
   return (
     <>
-      <Toast toasts={toasts} onRemove={removeToast} />
       {confirmDelete && (
         <ConfirmDialog
           message="Are you sure you want to delete this lead?"
@@ -494,7 +471,7 @@ export default function LeadsPage() {
           onCancel={() => setConfirmDelete(null)}
         />
       )}
-      {seqLeadId && <SequenceModal leadId={seqLeadId} onClose={() => setSeqLeadId(null)} showToast={showToast} />}
+      {seqLeadId && <SequenceModal leadId={seqLeadId} onClose={() => setSeqLeadId(null)} />}
       <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={importCSV} />
 
       <div className="flex flex-1 min-h-0 gap-0 flex-col md:flex-row">
@@ -504,13 +481,13 @@ export default function LeadsPage() {
             <div className="flex items-center justify-between">
               <h1 className="text-lg font-semibold flex items-center gap-2">
                 <Users2 className="h-5 w-5 text-violet-400" /> Leads
-                <span className="text-xs bg-white/10 px-1.5 py-0.5 rounded-full">{leadsRaw.length}</span>
+                <span className="text-xs bg-white/10 px-1.5 py-0.5 rounded-full">{totalLeads}</span>
               </h1>
             </div>
 
             <div className="grid grid-cols-3 gap-2">
               <div className="bg-white/3 rounded-lg p-2 text-center">
-                <p className="text-base font-bold">{leadsRaw.length}</p>
+                <p className="text-base font-bold">{totalLeads}</p>
                 <p className="text-xs text-white/30">Total</p>
               </div>
               <div className="bg-white/3 rounded-lg p-2 text-center">
@@ -530,7 +507,7 @@ export default function LeadsPage() {
               className={`w-full text-left px-4 py-3 border-b border-white/5 text-sm flex items-center justify-between hover:bg-white/3 transition-colors ${selectedListId === null ? 'bg-white/5 border-l-2 border-l-violet-500 text-white' : 'text-white/60'}`}
             >
               <span>All Leads</span>
-              <span className="text-xs text-white/30">{leadsRaw.length}</span>
+              <span className="text-xs text-white/30">{selectedListId === null ? totalLeads : ''}</span>
             </button>
             {lists.map(list => (
               <button
@@ -615,7 +592,7 @@ export default function LeadsPage() {
             </select>
             <button
               onClick={enrichAll}
-              disabled={enrichingAll || filtered.length === 0}
+              disabled={enrichingAll || leads.length === 0}
               className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 rounded-lg text-sm transition-colors whitespace-nowrap"
             >
               {enrichingAll ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
@@ -625,16 +602,45 @@ export default function LeadsPage() {
 
           <div className="flex-1 overflow-y-auto">
             {isLoading ? (
-              <div className="flex items-center justify-center h-40 text-white/30 text-sm">
-                <RefreshCw className="h-4 w-4 animate-spin mr-2" /> Loading leads…
-              </div>
-            ) : filtered.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-64 text-white/30 text-sm gap-3">
-                <Users2 className="h-12 w-12 opacity-30" />
-                <p>No leads found</p>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-white/10 text-white/40 text-xs">
+                    <th className="w-8 px-4 py-2" />
+                    <th className="text-left px-4 py-2">Name</th>
+                    <th className="text-left px-4 py-2 hidden md:table-cell">Title</th>
+                    <th className="text-left px-4 py-2 hidden md:table-cell">Company</th>
+                    <th className="text-left px-4 py-2 hidden lg:table-cell">Email</th>
+                    <th className="text-left px-4 py-2">ICP</th>
+                    <th className="px-4 py-2" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from({ length: 10 }).map((_, i) => (
+                    <tr key={i} className="border-b border-white/5 animate-pulse">
+                      <td className="px-4 py-3"><div className="h-7 w-7 rounded-full bg-white/5" /></td>
+                      <td className="px-4 py-3"><div className="h-4 w-32 bg-white/5 rounded" /></td>
+                      <td className="px-4 py-3 hidden md:table-cell"><div className="h-4 w-24 bg-white/5 rounded" /></td>
+                      <td className="px-4 py-3 hidden md:table-cell"><div className="h-4 w-24 bg-white/5 rounded" /></td>
+                      <td className="px-4 py-3 hidden lg:table-cell"><div className="h-4 w-40 bg-white/5 rounded" /></td>
+                      <td className="px-4 py-3"><div className="h-4 w-12 bg-white/5 rounded-lg" /></td>
+                      <td className="px-4 py-3"><div className="h-6 w-16 bg-white/5 rounded" /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : leads.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full min-h-[400px] p-8 text-center animate-in fade-in duration-500">
+                <div className="h-20 w-20 rounded-full bg-violet-500/10 border border-violet-500/20 flex items-center justify-center mb-6">
+                  <Users2 className="h-10 w-10 text-violet-400/50" />
+                </div>
+                <h3 className="text-xl font-semibold text-white mb-2">No leads found</h3>
+                <p className="text-sm text-white/50 max-w-md mx-auto mb-8">
+                  Import your first batch of leads via CSV to start tracking, enriching, and engaging with them.
+                </p>
                 <button onClick={() => fileRef.current?.click()}
-                  className="flex items-center gap-2 px-4 py-2 border border-white/10 rounded-lg text-xs hover:bg-white/5">
-                  <Upload className="h-3.5 w-3.5" /> Import CSV
+                  className="flex items-center gap-2 px-6 py-3 bg-white/5 border border-white/10 hover:border-violet-500/50 hover:bg-violet-500/10 rounded-xl text-sm font-medium transition-all group">
+                  <Upload className="h-4 w-4 text-violet-400 group-hover:-translate-y-0.5 transition-transform" /> 
+                  Import CSV
                 </button>
               </div>
             ) : (
@@ -651,7 +657,7 @@ export default function LeadsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {paginated.map(lead => (
+                  {leads.map(lead => (
                     <tr
                       key={lead.id}
                       onClick={() => setSelectedLead(lead)}
@@ -715,7 +721,7 @@ export default function LeadsPage() {
           {totalPages > 1 && (
             <div className="p-3 border-t border-white/10 flex items-center justify-between">
               <p className="text-xs text-white/30">
-                {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, filtered.length)} of {filtered.length}
+                {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, totalLeads)} of {totalLeads}
               </p>
               <div className="flex items-center gap-2">
                 <button onClick={() => setPage(p => p - 1)} disabled={page === 0}
@@ -734,7 +740,7 @@ export default function LeadsPage() {
 
         {/* ── Right Detail Panel ────────────────────────────────────────────── */}
         {selectedLead && (
-          <LeadPanel lead={selectedLead} onClose={() => setSelectedLead(null)} showToast={showToast} />
+          <LeadPanel lead={selectedLead} onClose={() => setSelectedLead(null)} />
         )}
       </div>
     </>

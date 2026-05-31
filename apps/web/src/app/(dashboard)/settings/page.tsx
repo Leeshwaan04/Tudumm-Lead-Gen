@@ -4,24 +4,15 @@ import { useState, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   User, Building, Key, Shield, Copy, Plus, Trash2, Eye, EyeOff,
-  Check, Loader2, X, AlertCircle, CheckCircle2,
+  Check, Loader2, X, AlertCircle, CheckCircle2, Webhook,
 } from 'lucide-react'
+import { toast } from 'sonner'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface ApiKey { id: string; name: string; keyPrefix: string; lastUsedAt: string | null; createdAt: string; scopes: string[]; key?: string }
 interface Member { id: string; userId: string; role: string; user: { name: string | null; email: string } }
 
-// ─── Toast ────────────────────────────────────────────────────────────────────
-function Toast({ msg, type, onClose }: { msg: string; type: 'success' | 'error'; onClose: () => void }) {
-  useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t) }, [onClose])
-  return (
-    <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl border shadow-xl animate-in slide-in-from-bottom-4 duration-200 ${type === 'success' ? 'bg-green-500/10 border-green-500/30 text-green-300' : 'bg-red-500/10 border-red-500/30 text-red-300'}`}>
-      {type === 'success' ? <CheckCircle2 className="h-4 w-4 shrink-0" /> : <AlertCircle className="h-4 w-4 shrink-0" />}
-      <span className="text-sm">{msg}</span>
-      <button onClick={onClose}><X className="h-3.5 w-3.5 opacity-60" /></button>
-    </div>
-  )
-}
+
 
 // ─── Password Strength Indicator ─────────────────────────────────────────────
 function PasswordStrength({ password }: { password: string }) {
@@ -87,7 +78,7 @@ function NewKeyModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
       })
       if (!res.ok) throw new Error((await res.json()).error ?? 'Failed')
       const data = await res.json()
-      onCreated(data.key ?? data.id)
+      onCreated(data.raw ?? data.key ?? data.id)
     } catch (e: any) {
       setError(e.message)
       setLoading(false)
@@ -166,13 +157,12 @@ const tabs = [
   { id: 'workspace', label: 'Workspace', icon: Building },
   { id: 'security', label: 'Security', icon: Shield },
   { id: 'apikeys', label: 'API Keys', icon: Key },
+  { id: 'webhooks', label: 'Webhooks', icon: Webhook },
 ]
 
 export default function SettingsPage() {
   const qc = useQueryClient()
   const [activeTab, setActiveTab] = useState('profile')
-  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
-  const showToast = (msg: string, type: 'success' | 'error' = 'success') => setToast({ msg, type })
 
   // ── Profile ──────────────────────────────────────────────────────────────
   const { data: profile } = useQuery<any>({
@@ -192,8 +182,8 @@ export default function SettingsPage() {
       })
       if (!res.ok) throw new Error((await res.json()).error ?? 'Failed')
       qc.invalidateQueries({ queryKey: ['settings-profile'] })
-      showToast('Profile saved')
-    } catch (e: any) { showToast(e.message, 'error') }
+      toast.success('Profile saved')
+    } catch (e: any) { toast.error(e.message) }
     setSavingProfile(false)
   }
 
@@ -219,8 +209,8 @@ export default function SettingsPage() {
       })
       if (!res.ok) throw new Error((await res.json()).error ?? 'Failed')
       qc.invalidateQueries({ queryKey: ['workspace'] })
-      showToast('Workspace saved')
-    } catch (e: any) { showToast(e.message, 'error') }
+      toast.success('Workspace saved')
+    } catch (e: any) { toast.error(e.message) }
     setSavingWs(false)
   }
 
@@ -244,8 +234,8 @@ export default function SettingsPage() {
       })
       if (!res.ok) throw new Error((await res.json()).error ?? 'Failed')
       qc.invalidateQueries({ queryKey: ['members'] })
-      setInviteEmail(''); showToast('Invitation sent')
-    } catch (e: any) { showToast(e.message, 'error') }
+      setInviteEmail(''); toast.success('Invitation sent')
+    } catch (e: any) { toast.error(e.message) }
     setInviting(false)
   }
   async function removeMember(id: string, name: string) {
@@ -255,7 +245,7 @@ export default function SettingsPage() {
     await fetch(`/api/members/${id}`, { method: 'DELETE' })
     qc.invalidateQueries({ queryKey: ['members'] })
     setRemovingId(null)
-    showToast('Member removed')
+    toast.success('Member removed')
   }
 
   // ── Security ──────────────────────────────────────────────────────────────
@@ -277,7 +267,7 @@ export default function SettingsPage() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed')
       setCurPwd(''); setNewPwd(''); setConfirmPwd('')
-      showToast('Password updated')
+      toast.success('Password updated')
     } catch (e: any) { setPwdError(e.message) }
     setChangingPwd(false)
   }
@@ -302,7 +292,7 @@ export default function SettingsPage() {
     await fetch(`/api/settings/apikeys?id=${id}`, { method: 'DELETE' })
     qc.invalidateQueries({ queryKey: ['api-keys'] })
     setRevokingId(null)
-    showToast('Key revoked')
+    toast.success('Key revoked')
   }
 
   function copyKey(id: string, keyPrefix: string, fullKey?: string) {
@@ -313,9 +303,52 @@ export default function SettingsPage() {
     setTimeout(() => setCopiedId(null), 2000)
   }
 
+  // ── Webhooks ──────────────────────────────────────────────────────────────
+  const { data: webhooks = [] } = useQuery<any[]>({
+    queryKey: ['webhooks'],
+    queryFn: () => fetch('/api/settings/webhooks').then(r => r.json()),
+  })
+  const [newWebhookUrl, setNewWebhookUrl] = useState('')
+  const [addingWebhook, setAddingWebhook] = useState(false)
+  const [deletingWebhookId, setDeletingWebhookId] = useState<string | null>(null)
+
+  async function addWebhook() {
+    if (!newWebhookUrl) return
+    setAddingWebhook(true)
+    try {
+      const res = await fetch('/api/settings/webhooks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: newWebhookUrl, events: ['*'] }),
+      })
+      if (!res.ok) throw new Error((await res.json()).error ?? 'Failed')
+      qc.invalidateQueries({ queryKey: ['webhooks'] })
+      setNewWebhookUrl('')
+      toast.success('Webhook added')
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setAddingWebhook(false)
+    }
+  }
+
+  async function deleteWebhook(id: string) {
+    if (!confirm('Remove this webhook?')) return
+    setDeletingWebhookId(id)
+    try {
+      const res = await fetch(`/api/settings/webhooks?id=${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed')
+      qc.invalidateQueries({ queryKey: ['webhooks'] })
+      toast.success('Webhook removed')
+    } catch (e: any) {
+      toast.error(e.message)
+    } finally {
+      setDeletingWebhookId(null)
+    }
+  }
+
   return (
     <>
-      {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
       {showNewKey && (
         <NewKeyModal
           onClose={() => setShowNewKey(false)}
@@ -495,11 +528,16 @@ export default function SettingsPage() {
               <p className="text-sm text-white/40">Keep your keys secret — never commit them to version control.</p>
 
               {apiKeys.length === 0 ? (
-                <div className="border border-dashed border-white/10 rounded-xl p-8 text-center">
-                  <Key className="h-8 w-8 text-white/20 mx-auto mb-3" />
-                  <p className="text-sm text-white/30 mb-3">No API keys yet</p>
+                <div className="bg-white/[0.02] border border-white/5 shadow-inner rounded-2xl p-10 flex flex-col items-center justify-center text-center mt-4">
+                  <div className="h-16 w-16 rounded-full bg-violet-500/10 flex items-center justify-center mb-4 ring-1 ring-violet-500/20 shadow-[0_0_20px_rgba(139,92,246,0.15)]">
+                    <Key className="h-8 w-8 text-violet-400" />
+                  </div>
+                  <h3 className="text-lg font-medium text-white mb-2">No API keys yet</h3>
+                  <p className="text-sm text-white/40 mb-6 max-w-sm leading-relaxed">Create an API key to authenticate requests from your custom scripts or third-party services.</p>
                   <button onClick={() => setShowNewKey(true)}
-                    className="text-xs text-violet-400 hover:underline">Create your first key</button>
+                    className="flex items-center gap-2 px-5 py-2.5 bg-violet-600/20 hover:bg-violet-600/30 border border-violet-500/30 rounded-xl text-sm font-medium text-violet-300 transition-colors">
+                    <Plus className="h-4 w-4" />Create your first key
+                  </button>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -546,6 +584,56 @@ export default function SettingsPage() {
                           ))}
                         </div>
                       )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Webhooks ──────────────────────────────────────────────────── */}
+          {activeTab === 'webhooks' && (
+            <div className="space-y-6">
+              <h2 className="text-xl font-semibold">Webhooks & Integrations</h2>
+              <p className="text-sm text-white/40">Configure webhooks to receive real-time updates when leads are enriched or sequences complete.</p>
+              
+              <div className="flex gap-2">
+                <input
+                  value={newWebhookUrl}
+                  onChange={e => setNewWebhookUrl(e.target.value)}
+                  placeholder="https://your-crm.com/api/webhook"
+                  className="flex-1 px-3 py-2 text-sm bg-white/5 border border-white/10 rounded-lg outline-none focus:border-violet-500 text-white placeholder:text-white/20"
+                />
+                <button onClick={addWebhook} disabled={addingWebhook || !newWebhookUrl}
+                  className="flex items-center gap-2 px-4 py-2 text-sm bg-violet-600 hover:bg-violet-500 rounded-lg disabled:opacity-50 transition-colors">
+                  {addingWebhook ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                  Add Webhook
+                </button>
+              </div>
+
+              {webhooks.length === 0 ? (
+                <div className="bg-white/[0.02] border border-white/5 shadow-inner rounded-2xl p-10 flex flex-col items-center justify-center text-center mt-6">
+                  <div className="h-16 w-16 rounded-full bg-violet-500/10 flex items-center justify-center mb-4 ring-1 ring-violet-500/20 shadow-[0_0_20px_rgba(139,92,246,0.15)]">
+                    <Webhook className="h-8 w-8 text-violet-400" />
+                  </div>
+                  <h3 className="text-lg font-medium text-white mb-2">No Webhooks Configured</h3>
+                  <p className="text-sm text-white/40 max-w-sm leading-relaxed">Add a webhook URL to receive real-time POST requests when significant events occur.</p>
+                </div>
+              ) : (
+                <div className="space-y-3 mt-6">
+                  {webhooks.map((wh: any) => (
+                    <div key={wh.id} className="border border-white/10 rounded-xl p-4 flex items-center justify-between">
+                      <div className="flex-1 min-w-0 pr-4">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="h-2 w-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></span>
+                          <p className="font-mono text-sm text-white truncate">{wh.url}</p>
+                        </div>
+                        <p className="text-xs text-white/40">Secret: <span className="text-white/20 font-mono blur-[2px] hover:blur-none transition-all">{wh.secret}</span></p>
+                      </div>
+                      <button onClick={() => deleteWebhook(wh.id)} disabled={deletingWebhookId === wh.id}
+                        className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-400 transition-colors disabled:opacity-40 shrink-0">
+                        {deletingWebhookId === wh.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                      </button>
                     </div>
                   ))}
                 </div>

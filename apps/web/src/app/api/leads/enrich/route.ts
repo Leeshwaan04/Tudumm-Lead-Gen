@@ -42,63 +42,71 @@ export async function POST(req: Request) {
   const results: { id: string; icpScore: number; aiSummary: string }[] = []
   let enriched = 0
 
-  for (const leadId of leadIds) {
-    const lead = await prisma.lead.findFirst({ where: { id: leadId, workspaceId } })
-    if (!lead) continue
+  // Fetch all requested leads
+  const leads = await prisma.lead.findMany({
+    where: { id: { in: leadIds }, workspaceId }
+  })
 
-    let icpScore: number
-    let aiSummary: string
-    let outreachAngle: string
+  // Process in chunks of 5 to avoid rate limits
+  const CHUNK_SIZE = 5;
+  for (let i = 0; i < leads.length; i += CHUNK_SIZE) {
+    const chunk = leads.slice(i, i + CHUNK_SIZE);
+    
+    await Promise.allSettled(chunk.map(async (lead) => {
+      let icpScore: number
+      let aiSummary: string
+      let outreachAngle: string
 
-    if (!apiKey) {
-      const mock = buildMockEnrichment(lead)
-      icpScore = mock.icpScore
-      aiSummary = mock.aiSummary
-      outreachAngle = mock.outreachAngle
-    } else {
-      try {
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
-          method: 'POST',
-          headers: {
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01',
-            'content-type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 512,
-            messages: [
-              {
-                role: 'user',
-                content: `Analyze this lead for B2B outreach: Name: ${lead.fullName}, Title: ${lead.title ?? ''}, Company: ${lead.company ?? ''}${lead.linkedinUrl ? `, LinkedIn: ${lead.linkedinUrl}` : ''}.
-
-Return JSON with: icpScore (0-100 integer), aiSummary (2-3 sentences about their role/fit), outreachAngle (one personalized opening line for cold outreach).`,
-              },
-            ],
-          }),
-        })
-        const data = await response.json()
-        const text = data.content?.[0]?.text ?? '{}'
-        const jsonMatch = text.match(/\{[\s\S]*\}/)
-        const parsed = JSON.parse(jsonMatch?.[0] ?? '{}')
-        icpScore = parsed.icpScore ?? scoreFromTitle(lead.title)
-        aiSummary = parsed.aiSummary ?? parsed.summary ?? ''
-        outreachAngle = parsed.outreachAngle ?? parsed.angle ?? ''
-      } catch {
+      if (!apiKey) {
         const mock = buildMockEnrichment(lead)
         icpScore = mock.icpScore
         aiSummary = mock.aiSummary
         outreachAngle = mock.outreachAngle
+      } else {
+        try {
+          const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01',
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: 'claude-haiku-4-5-20251001',
+              max_tokens: 512,
+              messages: [
+                {
+                  role: 'user',
+                  content: `Analyze this lead for B2B outreach: Name: ${lead.fullName}, Title: ${lead.title ?? ''}, Company: ${lead.company ?? ''}${lead.linkedinUrl ? `, LinkedIn: ${lead.linkedinUrl}` : ''}.
+
+Return JSON with: icpScore (0-100 integer), aiSummary (2-3 sentences about their role/fit), outreachAngle (one personalized opening line for cold outreach).`,
+                },
+              ],
+            }),
+          })
+          const data = await response.json()
+          const text = data.content?.[0]?.text ?? '{}'
+          const jsonMatch = text.match(/\{[\s\S]*\}/)
+          const parsed = JSON.parse(jsonMatch?.[0] ?? '{}')
+          icpScore = parsed.icpScore ?? scoreFromTitle(lead.title)
+          aiSummary = parsed.aiSummary ?? parsed.summary ?? ''
+          outreachAngle = parsed.outreachAngle ?? parsed.angle ?? ''
+        } catch {
+          const mock = buildMockEnrichment(lead)
+          icpScore = mock.icpScore
+          aiSummary = mock.aiSummary
+          outreachAngle = mock.outreachAngle
+        }
       }
-    }
 
-    await prisma.lead.update({
-      where: { id: leadId },
-      data: { icpScore, aiSummary, outreachAngle },
-    })
+      await prisma.lead.update({
+        where: { id: lead.id },
+        data: { icpScore, aiSummary, outreachAngle },
+      })
 
-    results.push({ id: leadId, icpScore, aiSummary })
-    enriched++
+      results.push({ id: lead.id, icpScore, aiSummary })
+      enriched++
+    }))
   }
 
   return NextResponse.json({ enriched, results })

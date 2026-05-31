@@ -11,31 +11,54 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const listId = searchParams.get('listId')
     const search = searchParams.get('search')
-    const minScore = searchParams.get('minScore')
+    const icpFilter = searchParams.get('icpFilter')
+    const emailFilter = searchParams.get('emailFilter')
     const rawLimit = parseInt(searchParams.get('limit') ?? '50', 10)
     const limit = isNaN(rawLimit) ? 50 : Math.min(Math.max(rawLimit, 1), 500)
     const rawOffset = parseInt(searchParams.get('offset') ?? '0', 10)
     const offset = isNaN(rawOffset) ? 0 : Math.max(rawOffset, 0)
 
     const where: any = { workspaceId, deletedAt: null }
+    const andConditions: any[] = []
+
     if (listId) where.listId = listId
-    if (minScore) where.icpScore = { gte: parseInt(minScore, 10) }
+    if (icpFilter && icpFilter !== 'all') {
+      if (icpFilter === '80+') where.icpScore = { gte: 80 }
+      else if (icpFilter === '60-79') where.icpScore = { gte: 60, lt: 80 }
+      else if (icpFilter === 'below60') where.icpScore = { lt: 60 }
+    }
+    if (emailFilter && emailFilter !== 'all') {
+      if (emailFilter === 'NOT_FOUND') {
+        andConditions.push({ OR: [{ emailStatus: 'NOT_FOUND' }, { emailStatus: null }] })
+      } else {
+        where.emailStatus = emailFilter
+      }
+    }
     if (search) {
-      where.OR = [
-        { fullName: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-        { company: { contains: search, mode: 'insensitive' } },
-      ]
+      andConditions.push({
+        OR: [
+          { fullName: { contains: search, mode: 'insensitive' } },
+          { email: { contains: search, mode: 'insensitive' } },
+          { company: { contains: search, mode: 'insensitive' } },
+        ]
+      })
+    }
+    
+    if (andConditions.length > 0) {
+      where.AND = andConditions
     }
 
-    const leads = await prisma.lead.findMany({
-      where,
-      orderBy: [{ icpScore: 'desc' }, { createdAt: 'desc' }],
-      take: limit,
-      skip: offset,
-    })
+    const [leads, total] = await Promise.all([
+      prisma.lead.findMany({
+        where,
+        orderBy: [{ icpScore: 'desc' }, { createdAt: 'desc' }],
+        take: limit,
+        skip: offset,
+      }),
+      prisma.lead.count({ where })
+    ])
 
-    return NextResponse.json(leads)
+    return NextResponse.json({ leads, total })
   } catch (e) {
     console.error('[API Error]', e)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

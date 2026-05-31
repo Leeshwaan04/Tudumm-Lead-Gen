@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { useWorkspaceStore } from "@/store/workspace";
 import { cn } from "@/lib/utils";
+import { Toaster } from "sonner";
 
 export default function DashboardLayout({
   children,
@@ -31,6 +32,7 @@ export default function DashboardLayout({
           {children}
         </main>
       </div>
+      <Toaster theme="dark" position="bottom-right" />
     </div>
   );
 }

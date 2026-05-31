@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
-import { parseCsv } from '@/lib/csv'
+import { parseCsvStream } from '@/lib/csv'
 
 const MAX_RECORDS = 10000
 
@@ -30,8 +30,8 @@ export async function POST(req: Request) {
       if (file.size > 10 * 1024 * 1024) {
         return NextResponse.json({ error: 'File too large (max 10MB)' }, { status: 413 })
       }
-      const text = await file.text()
-      const rows = parseCsv(text)
+      
+      const rows = await parseCsvStream(file)
       if (rows.length === 0) return NextResponse.json({ imported: 0, errors: ['Empty or unparseable CSV'] })
 
       rows.forEach((row, idx) => {

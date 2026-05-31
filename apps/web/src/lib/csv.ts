@@ -1,51 +1,26 @@
-// Minimal RFC-4180 CSV parser. Handles quoted fields, embedded commas/newlines, and "" escapes.
-// Returns an array of row objects keyed by lowercased header names.
+import { parse } from 'csv-parse'
+import { Readable } from 'stream'
 
-export function parseCsv(text: string): Record<string, string>[] {
-  const rows = parseRows(text)
-  if (rows.length === 0) return []
-  const headers = rows[0]!.map(h => h.trim().toLowerCase())
-  return rows.slice(1).map(values => {
+export async function parseCsvStream(file: File): Promise<Record<string, string>[]> {
+  const records: Record<string, string>[] = []
+  
+  // @ts-ignore
+  const nodeStream = Readable.fromWeb(file.stream())
+  
+  const parser = nodeStream.pipe(parse({
+    columns: (headers) => headers.map((h: string) => h.trim().toLowerCase()),
+    skip_empty_lines: true,
+    bom: true,
+    relax_quotes: true,
+    relax_column_count: true,
+  }))
+
+  for await (const record of parser) {
     const row: Record<string, string> = {}
-    headers.forEach((h, i) => { row[h] = (values[i] ?? '').trim() })
-    return row
-  })
-}
-
-function parseRows(text: string): string[][] {
-  // Normalize line endings
-  const src = text.replace(/\r\n?/g, '\n')
-  const rows: string[][] = []
-  let row: string[] = []
-  let field = ''
-  let inQuotes = false
-  let i = 0
-
-  while (i < src.length) {
-    const ch = src[i]
-
-    if (inQuotes) {
-      if (ch === '"') {
-        if (src[i + 1] === '"') { field += '"'; i += 2; continue }
-        inQuotes = false; i++; continue
-      }
-      field += ch; i++; continue
+    for (const key in record) {
+      row[key] = (record[key] ?? '').trim()
     }
-
-    if (ch === '"') { inQuotes = true; i++; continue }
-    if (ch === ',') { row.push(field); field = ''; i++; continue }
-    if (ch === '\n') {
-      row.push(field); field = ''
-      if (row.length > 1 || row[0] !== '') rows.push(row)
-      row = []; i++; continue
-    }
-    field += ch; i++
+    records.push(row)
   }
-
-  if (field !== '' || row.length > 0) {
-    row.push(field)
-    if (row.length > 1 || row[0] !== '') rows.push(row)
-  }
-
-  return rows
+  return records
 }

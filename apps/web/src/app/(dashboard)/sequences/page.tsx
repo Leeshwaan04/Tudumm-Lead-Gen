@@ -502,13 +502,27 @@ export default function SequencesPage() {
 
         <div className="flex-1 overflow-y-auto">
           {loading ? (
-            <div className="flex items-center justify-center h-20 text-white/30 text-xs gap-2">
-              <RefreshCw className="h-3.5 w-3.5 animate-spin" />Loading…
+            <div className="p-4 space-y-3">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="w-full p-4 border border-white/5 bg-white/[0.02] rounded-xl animate-pulse flex flex-col gap-3">
+                  <div className="flex justify-between items-center">
+                    <div className="h-4 w-32 bg-white/10 rounded"></div>
+                    <div className="h-4 w-16 bg-white/10 rounded"></div>
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="h-4 w-16 bg-white/10 rounded-full"></div>
+                    <div className="h-4 w-12 bg-white/10 rounded-full"></div>
+                    <div className="h-4 w-12 bg-white/10 rounded-full"></div>
+                  </div>
+                </div>
+              ))}
             </div>
           ) : sequences.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-32 text-white/30 text-xs gap-2 p-4 text-center">
-              <GitBranch className="h-6 w-6" />
-              <p>No sequences yet.</p>
+            <div className="flex flex-col items-center justify-center h-48 text-white/40 text-sm gap-3 p-4 text-center bg-white/[0.02] border border-white/5 m-4 rounded-2xl shadow-inner">
+              <div className="h-12 w-12 rounded-full bg-violet-500/10 flex items-center justify-center">
+                <GitBranch className="h-6 w-6 text-violet-400" />
+              </div>
+              <p>No sequences found.</p>
             </div>
           ) : sequences.map(s => (
             <button
@@ -531,28 +545,36 @@ export default function SequencesPage() {
       </div>
 
       {/* Detail panel */}
-      <div className="flex-1 overflow-y-auto min-w-0">
+      <div className="flex-1 overflow-y-auto min-w-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-violet-900/10 via-black to-black">
         {!seq || detailLoading ? (
-          <div className="flex flex-col items-center justify-center h-full text-white/30 text-sm gap-3">
+          <div className="flex flex-col items-center justify-center h-full text-white/40 text-sm gap-4 p-8">
             {detailLoading
-              ? <RefreshCw className="h-6 w-6 animate-spin text-violet-400" />
-              : <>
+              ? (
+                <div className="flex flex-col items-center gap-3">
+                  <RefreshCw className="h-8 w-8 animate-spin text-violet-500/80" />
+                  <p className="animate-pulse">Loading sequence details...</p>
+                </div>
+              )
+              : <div className="flex flex-col items-center justify-center max-w-sm text-center p-8 rounded-3xl bg-white/[0.02] border border-white/5 shadow-2xl backdrop-blur-xl">
                   {/* Mobile toggle button shown when no sequence is selected */}
                   <button
                     onClick={() => setSidebarOpen(true)}
-                    className="sm:hidden flex items-center gap-2 px-3 py-2 border border-white/10 rounded-lg text-xs text-white/50 hover:bg-white/5 transition-colors mb-2"
+                    className="sm:hidden flex items-center gap-2 px-3 py-2 border border-white/10 rounded-lg text-xs text-white/50 hover:bg-white/5 transition-colors mb-4"
                   >
                     <Menu className="h-4 w-4" />View Sequences
                   </button>
-                  <GitBranch className="h-10 w-10" />
-                  <p>Select a sequence to view details</p>
+                  <div className="h-16 w-16 rounded-full bg-violet-500/10 flex items-center justify-center mb-4">
+                    <GitBranch className="h-8 w-8 text-violet-400" />
+                  </div>
+                  <h2 className="text-lg font-medium text-white mb-2">No Sequence Selected</h2>
+                  <p className="text-white/40 mb-6 leading-relaxed">Select a sequence from the sidebar to view its performance, edit steps, and manage enrolled leads.</p>
                   <button
                     onClick={() => setShowNew(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 rounded-lg text-sm text-white transition-colors"
+                    className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 hover:bg-violet-500 rounded-xl text-sm font-medium text-white transition-all hover:scale-105 active:scale-95 shadow-[0_0_20px_rgba(139,92,246,0.3)]"
                   >
-                    <Plus className="h-4 w-4" />Create New Sequence
+                    <Plus className="h-4 w-4" />Create Sequence
                   </button>
-                </>
+                </div>
             }
           </div>
         ) : (
@@ -616,14 +638,17 @@ export default function SequencesPage() {
             <div>
               <h3 className="text-sm font-medium text-white/60 mb-3">Enrolled Leads</h3>
               {!seq.leads || seq.leads.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-10 text-white/30 text-sm gap-2 border border-white/5 rounded-xl">
-                  <Users2 className="h-8 w-8" />
-                  <p>No leads enrolled yet.</p>
+                <div className="flex flex-col items-center justify-center py-12 text-center bg-white/[0.02] border border-white/5 rounded-2xl shadow-inner">
+                  <div className="h-12 w-12 rounded-full bg-violet-500/10 flex items-center justify-center mb-3">
+                    <Users2 className="h-6 w-6 text-violet-400" />
+                  </div>
+                  <h3 className="text-sm font-medium text-white mb-1">No leads enrolled</h3>
+                  <p className="text-xs text-white/40 mb-4 max-w-[250px] leading-relaxed">Add leads to this sequence to start your automated outreach.</p>
                   <button
                     onClick={() => setShowAddLeads(true)}
-                    className="flex items-center gap-1.5 mt-1 px-3 py-1.5 bg-violet-600/20 border border-violet-500/30 rounded-lg text-xs text-violet-300 hover:bg-violet-600/30 transition-colors"
+                    className="flex items-center gap-2 px-4 py-2 bg-violet-600/20 hover:bg-violet-600/30 border border-violet-500/30 rounded-xl text-sm font-medium text-violet-300 transition-colors"
                   >
-                    <Plus className="h-3 w-3" />Add Leads
+                    <Plus className="h-4 w-4" />Add Leads
                   </button>
                 </div>
               ) : (

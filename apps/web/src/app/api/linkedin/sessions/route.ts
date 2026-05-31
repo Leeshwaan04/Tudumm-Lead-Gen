@@ -1,16 +1,15 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
 import { encryptCookie } from '@/lib/cookie-cipher'
+import { requireMember, requireAdmin } from '@/lib/authz'
 
 export async function GET() {
   try {
-    const session = await auth()
-    const workspaceId = (session as any)?.workspaceId
-    if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const ctx = await requireMember()
+    if (ctx instanceof NextResponse) return ctx
 
     const sessions = await prisma.linkedInSession.findMany({
-      where: { workspaceId },
+      where: { workspaceId: ctx.workspaceId },
       orderBy: { createdAt: 'desc' },
     })
     // Never return the cookie to the client — callers only need to know it's set
@@ -23,9 +22,10 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const session = await auth()
-    const workspaceId = (session as any)?.workspaceId
-    if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // ADMIN required: LinkedIn cookies are sensitive credentials
+    const ctx = await requireAdmin()
+    if (ctx instanceof NextResponse) return ctx
+    const workspaceId = ctx.workspaceId
 
     const body = await req.json()
     const alias = body.alias ?? body.accountName ?? 'Unnamed'

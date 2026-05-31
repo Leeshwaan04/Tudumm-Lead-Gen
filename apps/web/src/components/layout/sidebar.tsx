@@ -23,6 +23,8 @@ import {
   Sparkles,
   Users2,
   X,
+  Inbox,
+  CreditCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/store/workspace";
@@ -40,6 +42,7 @@ const navItems: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/phantoms", label: "Phantoms", icon: Ghost },
   { href: "/leads", label: "Leads", icon: Users2 },
+  { href: "/inbox", label: "Inbox", icon: Inbox, badge: "New" },
   { href: "/sequences", label: "Sequences", icon: GitBranch, isNew: true },
   { href: "/workflows", label: "Workflows", icon: GitBranch, isNew: true },
   { href: "/actors", label: "Actors", icon: Play },
@@ -50,6 +53,7 @@ const navItems: NavItem[] = [
   { href: "/playbooks", label: "Playbooks", icon: BookOpen, isNew: true },
   { href: "/linkedin", label: "LinkedIn", icon: Linkedin },
   { href: "/enrichment", label: "Enrichment", icon: Sparkles },
+  { href: "/billing", label: "Billing", icon: CreditCard },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

@@ -1,16 +1,15 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
+import { requireMember } from '@/lib/authz'
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await auth()
-    const workspaceId = (session as any)?.workspaceId
-    if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const ctx = await requireMember()
+    if (ctx instanceof NextResponse) return ctx
 
     const { id } = await params
     const lead = await prisma.lead.findFirst({
-      where: { id, workspaceId },
+      where: { id, workspaceId: ctx.workspaceId, deletedAt: null },
       include: { activities: { orderBy: { createdAt: 'desc' } } },
     })
     if (!lead) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -23,9 +22,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await auth()
-    const workspaceId = (session as any)?.workspaceId
-    if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const ctx = await requireMember()
+    if (ctx instanceof NextResponse) return ctx
 
     const { id } = await params
     const body = await req.json()
@@ -33,11 +31,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const allowedFields = ['fullName', 'firstName', 'lastName', 'title', 'company', 'email', 'linkedinUrl', 'twitterUrl', 'icpScore', 'source', 'listId', 'phone', 'location']
     const data: any = {}
     for (const field of allowedFields) {
-      if (body[field] !== undefined) data[field] = body[field]
+      if (body[field] !== undefined) {
+        // Normalize email to lowercase for consistency with import path
+        data[field] = field === 'email' && typeof body[field] === 'string' ? body[field].toLowerCase() : body[field]
+      }
     }
 
     const lead = await prisma.lead.updateMany({
-      where: { id, workspaceId },
+      where: { id, workspaceId: ctx.workspaceId, deletedAt: null },
       data,
     })
     if (lead.count === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 })
@@ -52,12 +53,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const session = await auth()
-    const workspaceId = (session as any)?.workspaceId
-    if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const ctx = await requireMember()
+    if (ctx instanceof NextResponse) return ctx
 
     const { id } = await params
-    const result = await prisma.lead.deleteMany({ where: { id, workspaceId } })
+    // Soft delete — sets deletedAt instead of removing row. Restorable.
+    const result = await prisma.lead.updateMany({
+      where: { id, workspaceId: ctx.workspaceId, deletedAt: null },
+      data: { deletedAt: new Date() },
+    })
     if (result.count === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 })
     return NextResponse.json({ ok: true })
   } catch (e) {

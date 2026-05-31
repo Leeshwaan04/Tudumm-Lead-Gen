@@ -11,6 +11,13 @@ export async function POST(req: Request) {
   const workspaceId = (session as any)?.workspaceId
   if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } })
+  if (!workspace) return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
+
+  if (workspace.creditBalance <= 0) {
+    return NextResponse.json({ error: 'Insufficient credits' }, { status: 402 })
+  }
+
   const { actorId, input } = await req.json()
   if (!actorId || typeof actorId !== 'string') {
     return NextResponse.json({ error: 'actorId is required' }, { status: 400 })

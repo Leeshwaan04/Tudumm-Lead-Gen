@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import bcrypt from 'bcryptjs'
 import { rateLimit, getClientIp } from '@/lib/rate-limit'
+import crypto from 'crypto'
 
 export async function POST(req: Request) {
   const ip = getClientIp(req)
@@ -25,7 +26,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Email already registered' }, { status: 409 })
     }
     const passwordHash = await bcrypt.hash(password, 12)
-    const slug = name.toLowerCase().replace(/\s+/g, '-') + '-' + Math.random().toString(36).slice(2, 6)
+    const baseSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+    const slug = `${baseSlug}-${crypto.randomUUID().slice(0, 8)}`
     const user = await prisma.user.create({
       data: {
         name,

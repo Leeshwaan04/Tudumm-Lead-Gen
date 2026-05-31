@@ -1,21 +1,20 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
+import { requireMember, requireOwner } from '@/lib/authz'
 
 export async function GET() {
-  const session = await auth()
-  const workspaceId = (session as any)?.workspaceId
-  if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const ctx = await requireMember()
+  if (ctx instanceof NextResponse) return ctx
 
-  const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } })
+  const workspace = await prisma.workspace.findUnique({ where: { id: ctx.workspaceId } })
   if (!workspace) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json(workspace)
 }
 
 export async function PATCH(req: Request) {
-  const session = await auth()
-  const workspaceId = (session as any)?.workspaceId
-  if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const ctx = await requireOwner()
+  if (ctx instanceof NextResponse) return ctx
+  const workspaceId = ctx.workspaceId
 
   const { name, slug } = await req.json()
 

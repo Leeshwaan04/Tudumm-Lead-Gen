@@ -1,61 +1,88 @@
 import { NextResponse } from 'next/server'
-import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
+import { requireMember, requireAdmin } from '@/lib/authz'
+import { randomBytes } from 'crypto'
+
+const INVITE_TTL_DAYS = 7
 
 export async function GET() {
-  try {
-    const session = await auth()
-    const workspaceId = (session as any)?.workspaceId
-    if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const ctx = await requireMember()
+  if (ctx instanceof NextResponse) return ctx
 
-    const members = await prisma.workspaceMember.findMany({
-      where: { workspaceId },
+  const [members, invites] = await Promise.all([
+    prisma.workspaceMember.findMany({
+      where: { workspaceId: ctx.workspaceId },
       include: { user: { select: { id: true, name: true, email: true, avatarUrl: true } } },
       orderBy: { joinedAt: 'asc' },
-    })
+    }),
+    prisma.workspaceInvite.findMany({
+      where: { workspaceId: ctx.workspaceId, acceptedAt: null, expiresAt: { gt: new Date() } },
+      select: { id: true, email: true, role: true, expiresAt: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    }),
+  ])
 
-    return NextResponse.json(members)
-  } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
-  }
+  return NextResponse.json({ members, pendingInvites: invites })
 }
 
 export async function POST(req: Request) {
   try {
-    const session = await auth()
-    const workspaceId = (session as any)?.workspaceId
-    if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const ctx = await requireAdmin()
+    if (ctx instanceof NextResponse) return ctx
+    const { workspaceId, role: callerRole } = ctx
 
     const { email, role } = await req.json()
-    if (!email) return NextResponse.json({ error: 'email required' }, { status: 400 })
-
-    const callerMember = await prisma.workspaceMember.findFirst({
-      where: { workspaceId, userId: session?.user?.id ?? '' }
-    })
-    if (!callerMember || (callerMember.role !== 'OWNER' && callerMember.role !== 'ADMIN')) {
-      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403 })
+    if (!email || typeof email !== 'string') {
+      return NextResponse.json({ error: 'email required' }, { status: 400 })
     }
-    if (role === 'OWNER' && callerMember.role !== 'OWNER') {
+    const normalizedEmail = email.trim().toLowerCase()
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalizedEmail)) {
+      return NextResponse.json({ error: 'invalid email' }, { status: 400 })
+    }
+
+    if (role === 'OWNER' && callerRole !== 'OWNER') {
       return NextResponse.json({ error: 'Only owners can assign owner role' }, { status: 403 })
     }
 
-    let user = await prisma.user.findUnique({ where: { email } })
-    if (!user) {
-      user = await prisma.user.create({ data: { email, name: email.split('@')[0] } })
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+      include: { _count: { select: { members: true } } },
+    })
+    if (!workspace) return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
+
+    if (workspace._count.members >= workspace.slots) {
+      return NextResponse.json({ error: 'No available member slots. Please upgrade your plan.' }, { status: 402 })
     }
 
-    const existing = await prisma.workspaceMember.findUnique({
-      where: { workspaceId_userId: { workspaceId, userId: user.id } },
-    })
-    if (existing) return NextResponse.json({ error: 'Already a member' }, { status: 409 })
+    // If the user already exists AND is already a member, reject.
+    const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } })
+    if (existingUser) {
+      const existingMember = await prisma.workspaceMember.findUnique({
+        where: { workspaceId_userId: { workspaceId, userId: existingUser.id } },
+      })
+      if (existingMember) return NextResponse.json({ error: 'Already a member' }, { status: 409 })
+    }
 
-    const member = await prisma.workspaceMember.create({
-      data: { workspaceId, userId: user.id, role: role ?? 'MEMBER' },
-      include: { user: { select: { id: true, name: true, email: true, avatarUrl: true } } },
+    // B-6: create a pending invite with a token instead of a ghost account.
+    const token = randomBytes(32).toString('hex')
+    const expiresAt = new Date(Date.now() + INVITE_TTL_DAYS * 86_400_000)
+
+    const invite = await prisma.workspaceInvite.upsert({
+      where: { workspaceId_email: { workspaceId, email: normalizedEmail } },
+      update: { token, role: role ?? 'MEMBER', invitedBy: ctx.userId, expiresAt, acceptedAt: null },
+      create: { workspaceId, email: normalizedEmail, role: role ?? 'MEMBER', token, invitedBy: ctx.userId, expiresAt },
     })
 
-    return NextResponse.json(member, { status: 201 })
+    // TODO: send invite email via SMTP. For now, return the accept URL so the
+    // caller (UI) can surface/copy it. Wire nodemailer once SMTP creds are set.
+    const acceptUrl = `${process.env.APP_URL ?? 'https://app.tudumm.io'}/accept-invite?token=${token}`
+
+    return NextResponse.json(
+      { id: invite.id, email: invite.email, role: invite.role, expiresAt: invite.expiresAt, acceptUrl },
+      { status: 201 }
+    )
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 })
+    console.error('[Members invite error]', e)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
