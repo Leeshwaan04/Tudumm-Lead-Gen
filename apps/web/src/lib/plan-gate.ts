@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db'
+import type { Prisma } from '@prisma/client'
 
 export class InsufficientCreditsError extends Error {
   constructor(message: string) {
@@ -22,7 +23,7 @@ export async function requireCredits(
   if (amount <= 0) return
 
   // Use a transaction to ensure safe deduction
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     // Lock the workspace row for update
     const workspace: any = await tx.$queryRaw`
       SELECT id, "creditBalance", "aiCredits", "emailCredits"

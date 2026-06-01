@@ -16,7 +16,7 @@ export async function GET(req: Request) {
     take: 500, // bounded scan
   })
 
-  const entry = logs.find(l => {
+  const entry = logs.find((l: typeof logs[0]) => {
     try {
       const m = JSON.parse(l.metadata)
       return m.token === token && m.expiresAt > Date.now()
