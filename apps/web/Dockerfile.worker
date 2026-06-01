@@ -43,5 +43,5 @@ RUN cd apps/web && npx prisma generate
 
 WORKDIR /app/apps/web
 
-# tsx may be hoisted to the workspace root by pnpm — resolve either location
-CMD ["sh", "-c", "TSX=/app/node_modules/.bin/tsx; [ -f \"$TSX\" ] || TSX=node_modules/.bin/tsx; exec \"$TSX\" src/workers/start-worker.ts"]
+# Run via node's tsx loader — resolves the tsx package (not the .bin symlink)
+CMD ["node", "--import", "tsx", "src/workers/start-worker.ts"]
