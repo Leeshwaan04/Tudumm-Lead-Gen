@@ -23,9 +23,7 @@ const nextConfig: NextConfig = {
   },
   // 'standalone' is used for Docker deployments; Amplify SSR uses standard .next output
   output: process.env.AMPLIFY_APP_ID ? undefined : 'standalone',
-  experimental: {
-    reactCompiler: false,
-  },
+  experimental: {},
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "avatars.githubusercontent.com" },
