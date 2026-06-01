@@ -180,25 +180,8 @@ const worker = new Worker<RunJobData>(
         },
       })
 
-      // Deduct credits
-      const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } })
-      if (workspace) {
-        await prisma.workspace.update({
-          where: { id: workspaceId },
-          data: { creditBalance: { decrement: creditsCost } },
-        })
-        await prisma.creditTransaction.create({
-          data: {
-            workspaceId,
-            type: 'DEBIT',
-            amount: creditsCost,
-            balanceBefore: workspace.creditBalance,
-            balanceAfter: workspace.creditBalance - creditsCost,
-            description: `Actor run: ${job.data.actorSlug}`,
-            runId,
-          },
-        })
-      }
+      // Credits are not charged — Tudumm is free for all users.
+      // creditsCost is still recorded on the run for display/analytics only.
 
       const durationMs = Math.floor(Math.random() * 300000) + 60000
 

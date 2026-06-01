@@ -71,13 +71,10 @@ export async function POST(req: Request) {
 
     const workspace = await prisma.workspace.findUnique({
       where: { id: workspaceId },
-      include: { _count: { select: { members: true } } },
     })
     if (!workspace) return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })
 
-    if (workspace._count.members >= workspace.slots) {
-      return NextResponse.json({ error: 'No available member slots. Please upgrade your plan.' }, { status: 402 })
-    }
+    // Member slots are unlimited — no seat cap.
 
     // If the user already exists AND is already a member, reject.
     const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } })
