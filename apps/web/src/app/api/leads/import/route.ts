@@ -34,7 +34,13 @@ export async function POST(req: Request) {
       const rows = await parseCsvStream(file)
       if (rows.length === 0) return NextResponse.json({ imported: 0, errors: ['Empty or unparseable CSV'] })
 
-      rows.forEach((row, idx) => {
+      rows.forEach((rawRow, idx) => {
+        // Normalize header keys: lowercase + strip spaces, so camelCase / Title Case
+        // headers (fullName, "Full Name", "LinkedIn URL") all map correctly.
+        const row: Record<string, string> = {}
+        for (const k of Object.keys(rawRow)) {
+          row[k.toLowerCase().replace(/\s+/g, '')] = (rawRow as Record<string, string>)[k] ?? ''
+        }
         const normalized = {
           fullName: row['fullname'] || row['full_name'] || row['name'] ||
             [row['firstname'] || row['first_name'], row['lastname'] || row['last_name']].filter(Boolean).join(' '),

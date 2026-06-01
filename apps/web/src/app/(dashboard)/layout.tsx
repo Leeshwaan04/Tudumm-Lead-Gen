@@ -1,6 +1,7 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
+import { useSession } from "next-auth/react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { useWorkspaceStore } from "@/store/workspace";
@@ -12,7 +13,36 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { sidebarCollapsed } = useWorkspaceStore();
+  const { sidebarCollapsed, setCurrentWorkspace, setWorkspaces, setCurrentUser } = useWorkspaceStore();
+  const { data: session } = useSession();
+
+  // Sync the store with the authenticated session + real workspace on every load.
+  // Prevents stale/previous-user identity from showing in the topbar.
+  useEffect(() => {
+    if (session?.user) {
+      setCurrentUser({
+        id: (session.user as { id?: string }).id ?? "",
+        name: session.user.name ?? "",
+        email: session.user.email ?? "",
+        avatarUrl: session.user.image ?? undefined,
+      } as never);
+    } else {
+      setCurrentUser(null);
+    }
+  }, [session, setCurrentUser]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/workspace")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((ws) => {
+        if (cancelled || !ws || ws.error) return;
+        setCurrentWorkspace(ws);
+        setWorkspaces([ws]);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [setCurrentWorkspace, setWorkspaces]);
 
   return (
     <div className="flex h-screen bg-[#09090b] text-white">
