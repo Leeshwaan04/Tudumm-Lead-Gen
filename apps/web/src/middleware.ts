@@ -38,6 +38,8 @@ export default auth((req) => {
 
   const response = NextResponse.next()
   response.headers.set('Content-Security-Policy', csp)
+  // Prevent Railway/CDN edge caching of all pages — auth state must be checked per request
+  response.headers.set('Cache-Control', 'no-store, must-revalidate')
   return response
 })
 
