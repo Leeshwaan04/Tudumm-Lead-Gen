@@ -30,7 +30,6 @@ ENV NODE_ENV=production
 ENV DATABASE_URL=postgresql://localhost:5432/dummy
 
 RUN cd apps/web && npx prisma generate
-# db push runs at runtime via entrypoint, not build time (needs live DATABASE_URL)
 RUN pnpm --filter tudumm-web build
 
 # ── Stage 3: Production runner ────────────────────────────────────────────────
@@ -46,12 +45,28 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN addgroup --system --gid 1001 nodejs \
  && adduser --system --uid 1001 nextjs
 
+# Next.js standalone output
 COPY --from=builder /app/apps/web/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
+
+# Prisma client for workers
 COPY --from=builder /app/apps/web/prisma ./apps/web/prisma
 COPY --from=builder /app/apps/web/node_modules/.prisma ./apps/web/node_modules/.prisma
 COPY --from=builder /app/apps/web/node_modules/@prisma ./apps/web/node_modules/@prisma
+
+# Worker runtime deps
+COPY --from=builder /app/apps/web/node_modules/tsx ./apps/web/node_modules/tsx
+COPY --from=builder /app/apps/web/node_modules/bullmq ./apps/web/node_modules/bullmq
+COPY --from=builder /app/apps/web/node_modules/ioredis ./apps/web/node_modules/ioredis
+COPY --from=builder /app/apps/web/node_modules/nodemailer ./apps/web/node_modules/nodemailer
+COPY --from=builder /app/apps/web/node_modules/bcryptjs ./apps/web/node_modules/bcryptjs
+
+# Worker source files
+COPY --from=builder /app/apps/web/src/workers ./apps/web/src/workers
+COPY --from=builder /app/apps/web/src/lib ./apps/web/src/lib
+COPY --from=builder /app/apps/web/tsconfig.json ./apps/web/tsconfig.json
+
 COPY apps/web/entrypoint.sh ./entrypoint.sh
 RUN chmod +x ./entrypoint.sh
 
