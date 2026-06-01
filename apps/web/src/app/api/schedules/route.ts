@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
+import { nextRunAt } from '@/lib/cron'
 
 export async function GET() {
   const session = await auth()
@@ -35,8 +36,14 @@ export async function POST(req: Request) {
     })
   }
 
+  const timezone = body.timezone ?? 'UTC'
   const schedule = await prisma.schedule.create({
-    data: { name, actorId: actor.id, cronExpr, workspaceId, input: JSON.stringify(body.input ?? {}), timezone: body.timezone ?? 'UTC' },
+    data: {
+      name, actorId: actor.id, cronExpr, workspaceId,
+      input: JSON.stringify(body.input ?? {}),
+      timezone,
+      nextRunAt: nextRunAt(cronExpr, timezone),
+    },
   })
   return NextResponse.json(schedule, { status: 201 })
 }

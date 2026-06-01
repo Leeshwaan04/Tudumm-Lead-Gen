@@ -48,12 +48,16 @@ export async function POST(req: Request) {
     const passwordHash = await bcrypt.hash(password, 12)
     const baseSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
     const slug = `${baseSlug}-${crypto.randomUUID().slice(0, 8)}`
+    // Only require email verification when an SMTP server is actually configured —
+    // otherwise the verification email can never arrive and the user would be
+    // stuck. Without SMTP we auto-verify so signup is a clean, working flow.
+    const smtpConfigured = !!process.env.SMTP_HOST && process.env.SMTP_HOST !== 'localhost'
     const user = await prisma.user.create({
       data: {
         name,
         email,
         passwordHash,
-        emailVerified: false,
+        emailVerified: !smtpConfigured,
         workspaceMembers: {
           create: {
             role: 'OWNER',
@@ -73,20 +77,20 @@ export async function POST(req: Request) {
         },
       },
     })
-    // Store verify token in AuditLog (lightweight — no dedicated EmailToken model yet)
-    const verifyToken = crypto.randomBytes(32).toString('hex')
-    await prisma.auditLog.create({
-      data: {
-        userId: user.id,
-        action: 'email.verify_token',
-        metadata: JSON.stringify({ token: verifyToken, expiresAt: Date.now() + 86_400_000 }),
-      },
-    }).catch(() => { /* non-fatal */ })
-
-    // Fire-and-forget — mail failure must not block signup
-    sendVerificationEmail(email, verifyToken).catch(err =>
-      console.error('[Verification email failed]', err)
-    )
+    // Only generate + send a verification email when SMTP is configured.
+    if (smtpConfigured) {
+      const verifyToken = crypto.randomBytes(32).toString('hex')
+      await prisma.auditLog.create({
+        data: {
+          userId: user.id,
+          action: 'email.verify_token',
+          metadata: JSON.stringify({ token: verifyToken, expiresAt: Date.now() + 86_400_000 }),
+        },
+      }).catch(() => { /* non-fatal */ })
+      sendVerificationEmail(email, verifyToken).catch(err =>
+        console.error('[Verification email failed]', err)
+      )
+    }
 
     return NextResponse.json({ id: user.id, email: user.email })
   } catch (e) {

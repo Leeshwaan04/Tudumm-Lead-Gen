@@ -45,7 +45,7 @@ const navItems: NavItem[] = [
   { href: "/sequences", label: "Sequences", icon: GitBranch, isNew: true },
   { href: "/workflows", label: "Workflows", icon: GitBranch, isNew: true },
   { href: "/actors", label: "Actors", icon: Play },
-  { href: "/store", label: "Store", icon: Store, badge: "27K+" },
+  { href: "/store", label: "Store", icon: Store },
   { href: "/proxy", label: "Proxy", icon: Globe2 },
   { href: "/datasets", label: "Datasets", icon: Database },
   { href: "/schedules", label: "Schedules", icon: Clock },

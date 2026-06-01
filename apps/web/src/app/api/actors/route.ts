@@ -19,8 +19,15 @@ export async function GET(req: Request) {
   const workspaceId = (session as any)?.workspaceId
   if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  // Include the workspace's own actors AND public/published store actors, so
+  // Quick Run and pickers are populated even for brand-new workspaces.
   const actors = await prisma.actor.findMany({
-    where: { workspaceId },
+    where: {
+      OR: [
+        { workspaceId },
+        { isPublic: true, status: 'PUBLISHED' },
+      ],
+    },
     orderBy: { createdAt: 'desc' },
   })
   return NextResponse.json(actors)

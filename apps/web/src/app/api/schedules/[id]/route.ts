@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
+import { nextRunAt } from '@/lib/cron'
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -37,6 +38,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (status !== undefined) data.status = status
     if (timezone !== undefined) data.timezone = timezone
     if (input !== undefined) data.input = typeof input === 'string' ? input : JSON.stringify(input)
+
+    // Recompute next run when timing changes. (Resume with no cronExpr in body is
+    // handled by the scheduler, which backfills nextRunAt for ACTIVE schedules.)
+    if (cronExpr !== undefined) {
+      data.nextRunAt = nextRunAt(cronExpr, timezone ?? 'UTC')
+    }
+    if (status !== undefined && status !== 'ACTIVE') {
+      data.nextRunAt = null // paused/archived schedules don't fire
+    }
 
     const result = await prisma.schedule.updateMany({ where: { id, workspaceId }, data })
     if (result.count === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 })
