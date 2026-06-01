@@ -41,7 +41,9 @@ COPY apps/web/package.json ./apps/web/
 
 RUN cd apps/web && npx prisma generate
 
+# Install tsx globally so the worker runs regardless of pnpm symlink layout
+RUN npm install -g tsx@4.19.2
+
 WORKDIR /app/apps/web
 
-# Run via node's tsx loader — resolves the tsx package (not the .bin symlink)
-CMD ["node", "--import", "tsx", "src/workers/start-worker.ts"]
+CMD ["tsx", "src/workers/start-worker.ts"]
