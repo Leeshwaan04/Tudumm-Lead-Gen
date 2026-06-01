@@ -1,0 +1,11 @@
+[phases.setup]
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = ["npm install -g corepack@0.24.1 && corepack enable && pnpm install --frozen-lockfile"]
+
+[phases.build]
+cmds = ["cd apps/web && npx prisma generate"]
+
+[start]
+cmd = "cd apps/web && node_modules/.bin/tsx src/workers/start-worker.ts"

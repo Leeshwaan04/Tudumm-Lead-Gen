@@ -39,7 +39,11 @@ export async function POST(req: Request) {
   if (!actor) {
     // Marketplace path: only PUBLISHED + isPublic actors are runnable across workspaces
     actor = await prisma.actor.findFirst({
-      where: { slug: actorId, isPublic: true, status: 'PUBLISHED' },
+      where: { 
+        isPublic: true, 
+        status: 'PUBLISHED',
+        OR: [{ id: actorId }, { slug: actorId }]
+      },
     })
   }
   if (!actor) {

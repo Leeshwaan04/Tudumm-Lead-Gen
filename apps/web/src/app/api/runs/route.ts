@@ -36,8 +36,17 @@ export async function POST(req: Request) {
 
     const { actorId, input } = await req.json()
 
-    // Verify actor belongs to this workspace
-    const actor = await prisma.actor.findFirst({ where: { id: actorId, workspaceId } })
+    // Verify actor belongs to this workspace or is public
+    let actor = await prisma.actor.findFirst({ where: { id: actorId, workspaceId } })
+    if (!actor) {
+      actor = await prisma.actor.findFirst({
+        where: { 
+          isPublic: true, 
+          status: 'PUBLISHED',
+          OR: [{ id: actorId }, { slug: actorId }]
+        },
+      })
+    }
     if (!actor) return NextResponse.json({ error: 'Actor not found' }, { status: 404 })
 
     const run = await prisma.run.create({
