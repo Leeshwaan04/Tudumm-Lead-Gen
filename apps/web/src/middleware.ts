@@ -23,16 +23,9 @@ export default auth((req) => {
     return NextResponse.redirect(new URL('/dashboard', req.url))
   }
 
-  // Generate a per-request nonce for CSP using Web Crypto (Edge-runtime compatible)
-  const nonce = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16))))
-  const isDev = process.env.NODE_ENV === 'development'
-  const scriptSrc = isDev
-    ? `script-src 'self' 'nonce-${nonce}' 'unsafe-eval'`  // dev HMR requires unsafe-eval
-    : `script-src 'self' 'nonce-${nonce}'`
   const csp = [
     "default-src 'self'",
-    scriptSrc,
-    // style-src retains unsafe-inline: React 19 emits inline style={{...}} props; CSS cannot exfiltrate data
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: https://avatars.githubusercontent.com https://lh3.googleusercontent.com https://api.dicebear.com",
     "font-src 'self'",
@@ -45,7 +38,6 @@ export default auth((req) => {
 
   const response = NextResponse.next()
   response.headers.set('Content-Security-Policy', csp)
-  response.headers.set('x-nonce', nonce)
   return response
 })
 
