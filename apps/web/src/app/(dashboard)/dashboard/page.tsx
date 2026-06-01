@@ -310,15 +310,15 @@ export default function DashboardPage() {
               <StatCard
                 title="Proxy Traffic"
                 value={`${workspace?.proxyGbUsed ?? 0} GB`}
-                subtitle={`of ${workspace?.slots ?? 3} GB included`}
+                subtitle="unlimited"
                 trend={8}
                 icon={Globe2}
                 iconColor="text-emerald-400"
               />
               <StatCard
-                title="Active Slots"
-                value={`${workspace?.slots ?? 0}`}
-                subtitle="actor slots"
+                title="Active Actors"
+                value={`${Array.isArray(runsRaw) ? new Set(runsRaw.map((r: any) => r.actorId)).size : 0}`}
+                subtitle="in use"
                 icon={Activity}
                 iconColor="text-blue-400"
               />
