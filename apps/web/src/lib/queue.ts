@@ -1,4 +1,5 @@
 import { Queue } from 'bullmq'
+import { redisConnection } from '@/lib/redis-connection'
 
 export type RunJobData = {
   runId: string
@@ -10,16 +11,11 @@ export type RunJobData = {
 }
 
 const connection = {
-  host: process.env.REDIS_HOST ?? 'localhost',
-  port: parseInt(process.env.REDIS_PORT ?? '6379'),
+  ...redisConnection,
   connectTimeout: 10000,
-  maxRetriesPerRequest: null, // Let BullMQ wait for connection
   enableReadyCheck: true,
   lazyConnect: true,
-  retryStrategy: (times: number) => {
-    // Exponential backoff with a max of 5 seconds
-    return Math.min(Math.pow(2, times) * 50, 5000)
-  }
+  retryStrategy: (times: number) => Math.min(Math.pow(2, times) * 50, 5000),
 }
 
 // Lazy singleton — Queue instance is only created on first use, not at import time.

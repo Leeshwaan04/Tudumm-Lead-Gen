@@ -1,12 +1,7 @@
 import { Worker, Job } from 'bullmq'
 import { SequenceJobData } from '../lib/queues/sequence-queue'
 import { processSequenceBatch } from '../lib/sequences/executor'
-
-const connection = {
-  host: process.env.REDIS_HOST ?? 'localhost',
-  port: parseInt(process.env.REDIS_PORT ?? '6379'),
-  maxRetriesPerRequest: null,
-}
+import { redisConnection as connection } from '../lib/redis-connection'
 
 export const sequenceWorker = new Worker<SequenceJobData>(
   'sequences',

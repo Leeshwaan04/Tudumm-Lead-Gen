@@ -1,16 +1,12 @@
 import { Queue } from 'bullmq'
+import { redisConnection } from '@/lib/redis-connection'
 
 export type SequenceJobData = {
   sequenceId: string
   workspaceId: string
 }
 
-const connection = {
-  host: process.env.REDIS_HOST ?? 'localhost',
-  port: parseInt(process.env.REDIS_PORT ?? '6379'),
-  connectTimeout: 10000,
-  maxRetriesPerRequest: null,
-}
+const connection = { ...redisConnection, connectTimeout: 10000 }
 
 let _sequenceQueue: Queue | null = null
 function getSequenceQueue(): Queue {

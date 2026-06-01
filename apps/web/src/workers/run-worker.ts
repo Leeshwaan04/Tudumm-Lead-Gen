@@ -1,13 +1,8 @@
 import { Worker } from 'bullmq'
 import { prisma } from '../lib/db'
 import type { RunJobData } from '../lib/queue'
+import { redisConnection as connection } from '../lib/redis-connection'
 import crypto from 'crypto'
-
-const connection = {
-  host: process.env.REDIS_HOST ?? 'localhost',
-  port: parseInt(process.env.REDIS_PORT ?? '6379'),
-  maxRetriesPerRequest: null,
-}
 
 const JOB_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
 const MAX_CONCURRENT = 3
