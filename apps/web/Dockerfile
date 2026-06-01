@@ -30,6 +30,7 @@ ENV NODE_ENV=production
 ENV DATABASE_URL=postgresql://localhost:5432/dummy
 
 RUN cd apps/web && npx prisma generate
+# db push runs at runtime via entrypoint, not build time (needs live DATABASE_URL)
 RUN pnpm --filter tudumm-web build
 
 # ── Stage 3: Production runner ────────────────────────────────────────────────
@@ -48,6 +49,11 @@ RUN addgroup --system --gid 1001 nodejs \
 COPY --from=builder /app/apps/web/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder /app/apps/web/prisma ./apps/web/prisma
+COPY --from=builder /app/apps/web/node_modules/.prisma ./apps/web/node_modules/.prisma
+COPY --from=builder /app/apps/web/node_modules/@prisma ./apps/web/node_modules/@prisma
+COPY apps/web/entrypoint.sh ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
 
 USER nextjs
 
@@ -58,4 +64,4 @@ ENV HOSTNAME="0.0.0.0"
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
   CMD wget --spider -q http://localhost:3000/api/health || exit 1
 
-CMD ["node", "apps/web/server.js"]
+CMD ["./entrypoint.sh"]
