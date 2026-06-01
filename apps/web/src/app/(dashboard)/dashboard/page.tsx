@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { StatCard } from '@/components/dashboard/CreditBalanceCard'
 import { UsageChart } from '@/components/dashboard/UsageChart'
+import OnboardingChecklist from '@/components/dashboard/OnboardingChecklist'
 import { Button } from '@/components/ui/button'
 import {
   Play, Plus, Zap, Globe2, Cpu, Activity, Loader2, X, ChevronRight,
@@ -202,12 +203,27 @@ export default function DashboardPage() {
   const { data: runsRaw, isLoading: runsLoading } = useQuery({
     queryKey: ['runs'],
     queryFn: () => fetch('/api/runs').then(r => r.json()),
-    refetchInterval: 10000,
+    // Poll every 5s when there are active runs, otherwise every 30s
+    refetchInterval: (query) => {
+      const data = query.state.data
+      const hasActive = Array.isArray(data) && data.some((r: any) => r.status === 'RUNNING' || r.status === 'QUEUED')
+      return hasActive ? 5000 : 30000
+    },
   })
 
   const { data: usageRaw, isLoading: usageLoading } = useQuery({
     queryKey: ['usage'],
     queryFn: () => fetch('/api/usage').then(r => r.json()),
+  })
+
+  const { data: leadsData } = useQuery({
+    queryKey: ['leads-count'],
+    queryFn: () => fetch('/api/leads?limit=1').then(r => r.json()),
+  })
+
+  const { data: sequencesRaw } = useQuery({
+    queryKey: ['sequences-count'],
+    queryFn: () => fetch('/api/sequences').then(r => r.json()),
   })
 
   const runs: Run[] = Array.isArray(runsRaw) ? runsRaw.slice(0, 10).map(toRun) : []
@@ -233,7 +249,16 @@ export default function DashboardPage() {
       {showQuickRun && <QuickRunModal onClose={() => setShowQuickRun(false)} />}
       {logsRunId && <LogsDrawer runId={logsRunId} onClose={() => setLogsRunId(null)} />}
 
-      <div className="p-6 overflow-y-auto flex-1 space-y-8 animate-in fade-in duration-500">
+      <div className="p-4 md:p-6 overflow-y-auto flex-1 space-y-6 md:space-y-8 animate-in fade-in duration-500">
+        {/* Onboarding checklist — shown to new users until dismissed */}
+        {workspace && (
+          <OnboardingChecklist
+            workspace={workspace}
+            runs={Array.isArray(runsRaw) ? runsRaw : []}
+            leads={Array.isArray(leadsData?.leads) ? leadsData.leads : (leadsData?.total > 0 ? [{}] : [])}
+            sequences={Array.isArray(sequencesRaw) ? sequencesRaw : []}
+          />
+        )}
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
