@@ -103,11 +103,53 @@ const stageIcons: React.ElementType[] = [Target, TrendingUp, Mail, Brain, Messag
 
 // ─── Playbook Detail ──────────────────────────────────────────────────────────
 
+function ActorPickerModal({ onClose, onPick }: { onClose: () => void; onPick: (actorId: string, actorName: string) => void }) {
+  const [actors, setActors] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+
+  useEffect(() => {
+    fetch('/api/actors').then(r => r.json()).then(d => { setActors(Array.isArray(d) ? d : []); setLoading(false) })
+  }, [])
+
+  const filtered = actors.filter(a => a.name?.toLowerCase().includes(search.toLowerCase()))
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-md bg-[#121214] border border-white/10 rounded-2xl p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-white">Pick an Actor for this Stage</h3>
+          <button onClick={onClose} className="text-white/30 hover:text-white"><X className="h-4 w-4" /></button>
+        </div>
+        <input
+          value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Search actors…"
+          className="w-full px-3 py-2 text-sm bg-white/5 border border-white/10 rounded-lg outline-none focus:border-violet-500 text-white"
+        />
+        <div className="max-h-72 overflow-y-auto space-y-1">
+          {loading ? <div className="text-white/30 text-sm text-center py-4">Loading…</div>
+            : filtered.length === 0 ? <div className="text-white/30 text-sm text-center py-4">No actors found. Create one in Actors.</div>
+            : filtered.map(a => (
+              <button key={a.id} onClick={() => onPick(a.id, a.name)}
+                className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-white/5 border border-transparent hover:border-white/10 transition-all">
+                <p className="text-sm font-medium text-white">{a.name}</p>
+                <p className="text-xs text-white/30 mt-0.5">{a.description?.slice(0, 60) ?? a.slug}</p>
+              </button>
+            ))
+          }
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function PlaybookDetail({ playbook, onClose }: { playbook: Playbook; onClose: () => void }) {
   const [activeStage, setActiveStage] = useState(0)
   const [running, setRunning] = useState(false)
   const [runningStage, setRunningStage] = useState<number | null>(null)
   const [showWorkflowSelector, setShowWorkflowSelector] = useState(false)
+  const [showActorPicker, setShowActorPicker] = useState(false)
+  const [stages, setStages] = useState<PlaybookStage[]>(playbook.stages)
   const [toast, setToast] = useState<string | null>(null)
 
   function showToast(msg: string) {
@@ -115,9 +157,21 @@ function PlaybookDetail({ playbook, onClose }: { playbook: Playbook; onClose: ()
     setTimeout(() => setToast(null), 3000)
   }
 
+  async function assignActor(actorId: string, actorName: string) {
+    setShowActorPicker(false)
+    const updated = stages.map((s, i) => i === activeStage ? { ...s, actorId, actorName } : s)
+    setStages(updated)
+    await fetch(`/api/playbooks/${playbook.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stages: updated }),
+    }).catch(() => {})
+    showToast(`Actor "${actorName}" assigned to stage "${stages[activeStage]?.name}"`)
+  }
+
   async function runStage(stage: PlaybookStage, idx: number) {
     if (!stage.actorId) {
-      showToast(`Stage "${stage.name}" queued (no actor ID configured).`)
+      setShowActorPicker(true)
       return
     }
     setRunningStage(idx)
@@ -150,7 +204,7 @@ function PlaybookDetail({ playbook, onClose }: { playbook: Playbook; onClose: ()
     setTimeout(() => setAddedToWorkflow(false), 3000)
   }
 
-  const stage = playbook.stages[activeStage]
+  const stage = stages[activeStage]
   const c = colorMap[stage?.color ?? (stageColors[activeStage % stageColors.length] ?? 'violet')] ?? colorMap['violet']!
   const StageIcon = (stageIcons[activeStage % stageIcons.length] ?? Target) as React.ElementType
 
@@ -158,6 +212,7 @@ function PlaybookDetail({ playbook, onClose }: { playbook: Playbook; onClose: ()
     <div className="border border-white/10 rounded-2xl overflow-hidden">
       {toast && <div className="fixed bottom-6 right-6 z-50 px-4 py-2 bg-violet-600 text-white text-sm rounded-xl shadow-xl">{toast}</div>}
       {showWorkflowSelector && <WorkflowSelectorModal onClose={() => setShowWorkflowSelector(false)} onSelect={addToWorkflow} />}
+      {showActorPicker && <ActorPickerModal onClose={() => setShowActorPicker(false)} onPick={assignActor} />}
 
       <div className="flex items-center justify-between p-5 border-b border-white/10">
         <div>
@@ -187,7 +242,7 @@ function PlaybookDetail({ playbook, onClose }: { playbook: Playbook; onClose: ()
       <div className="grid grid-cols-5 gap-0">
         {/* Stage list */}
         <div className="col-span-2 border-r border-white/10 p-4 space-y-1.5">
-          {playbook.stages.map((s, i) => {
+          {stages.map((s, i) => {
             const sc = colorMap[s.color ?? (stageColors[i % stageColors.length] ?? 'violet')] ?? colorMap['violet']!
             const SIcon = (stageIcons[i % stageIcons.length] ?? Target) as React.ElementType
             return (
@@ -223,8 +278,13 @@ function PlaybookDetail({ playbook, onClose }: { playbook: Playbook; onClose: ()
               <p className="text-sm text-white/60 leading-relaxed mb-5">{stage.detail ?? stage.description}</p>
               <div className="grid grid-cols-2 gap-3 mb-5">
                 <div className="bg-black/20 rounded-xl p-3">
-                  <p className="text-xs text-white/30 mb-1">Actor Used</p>
-                  <p className="text-sm font-medium text-white">{stage.actorName ?? 'Not configured'}</p>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-xs text-white/30">Actor Used</p>
+                    <button onClick={() => setShowActorPicker(true)} className="text-xs text-violet-400 hover:text-violet-300">
+                      {stage.actorId ? 'Change' : '+ Assign'}
+                    </button>
+                  </div>
+                  <p className="text-sm font-medium text-white">{stage.actorName ?? <span className="text-white/30 italic">Not configured</span>}</p>
                 </div>
                 <div className="bg-black/20 rounded-xl p-3">
                   <p className="text-xs text-white/30 mb-1">Expected Output</p>

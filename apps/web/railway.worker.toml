@@ -1,0 +1,9 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "apps/web/Dockerfile.worker"
+buildContext = "."
+
+[deploy]
+startCommand = "node_modules/.bin/tsx src/workers/start-worker.ts"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

@@ -474,6 +474,7 @@ model Playbook {
   category    String
   platform    String
   stages      String   @default("[]")
+  workflowId  String?
   isPublic    Boolean  @default(false)
   totalRuns   Int      @default(0)
   createdAt   DateTime @default(now())
