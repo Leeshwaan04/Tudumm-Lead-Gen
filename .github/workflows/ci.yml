@@ -30,7 +30,7 @@ jobs:
         run: npx prisma generate
 
       - name: Type check
-        run: pnpm --filter @tudumm/web exec tsc --noEmit
+        run: pnpm --filter tudumm-web exec tsc --noEmit
 
   lint:
     name: Lint
@@ -55,4 +55,4 @@ jobs:
         run: npx prisma generate
 
       - name: Lint
-        run: pnpm --filter @tudumm/web exec next lint
+        run: pnpm --filter tudumm-web exec next lint
