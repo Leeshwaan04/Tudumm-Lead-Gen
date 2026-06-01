@@ -8,7 +8,6 @@ import {
   Database,
   Shield,
   ArrowRight,
-  CheckCircle2,
   Star,
   Users,
   TrendingUp,
@@ -70,57 +69,6 @@ const features = [
   },
 ];
 
-const plans = [
-  {
-    name: "Starter",
-    price: 49,
-    credits: "10,000",
-    features: [
-      "10,000 credits/month",
-      "50 concurrent actors",
-      "Residential proxies",
-      "5 scheduled runs",
-      "CSV exports",
-      "Email support",
-    ],
-    cta: "Start free trial",
-    popular: false,
-  },
-  {
-    name: "Growth",
-    price: 149,
-    credits: "50,000",
-    features: [
-      "50,000 credits/month",
-      "200 concurrent actors",
-      "All proxy types",
-      "Unlimited schedules",
-      "All export formats",
-      "Workflow builder",
-      "Priority support",
-      "Webhook integrations",
-    ],
-    cta: "Get started",
-    popular: true,
-  },
-  {
-    name: "Scale",
-    price: 499,
-    credits: "250,000",
-    features: [
-      "250,000 credits/month",
-      "Unlimited actors",
-      "Dedicated proxy pool",
-      "Unlimited everything",
-      "SSO / SAML",
-      "Custom actor SLAs",
-      "Dedicated CSM",
-      "SLA 99.9%",
-    ],
-    cta: "Talk to sales",
-    popular: false,
-  },
-];
 
 const stats = [
   { label: "Actors available", value: "27,000+" },
@@ -170,7 +118,6 @@ export default function LandingPage() {
           </Link>
           <div className="hidden md:flex items-center gap-8 text-sm text-slate-400">
             <Link href="#features" className="hover:text-white transition-colors">Features</Link>
-            <Link href="#pricing" className="hover:text-white transition-colors">Pricing</Link>
             <Link href="/store" className="hover:text-white transition-colors">Store</Link>
             <Link href="#" className="hover:text-white transition-colors">Docs</Link>
           </div>
@@ -312,57 +259,6 @@ export default function LandingPage() {
                   </div>
                 </CardContent>
               </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing */}
-      <section id="pricing" className="py-24 px-6">
-        <div className="mx-auto max-w-5xl">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold text-white mb-4">Simple, predictable pricing</h2>
-            <p className="text-slate-400 text-lg">All plans include a 14-day free trial. No credit card required.</p>
-          </div>
-          <div className="grid md:grid-cols-3 gap-6">
-            {plans.map((plan) => (
-              <div
-                key={plan.name}
-                className={`rounded-2xl border p-8 ${
-                  plan.popular
-                    ? "border-violet-500/50 bg-gradient-to-b from-violet-900/30 to-slate-900/50 shadow-2xl shadow-violet-500/20 scale-[1.02]"
-                    : "border-white/10 bg-white/5"
-                }`}
-              >
-                {plan.popular && (
-                  <Badge variant="purple" className="mb-4 text-xs">Most popular</Badge>
-                )}
-                <div className="mb-6">
-                  <div className="text-sm font-semibold text-slate-400 mb-1">{plan.name}</div>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-4xl font-bold text-white">${plan.price}</span>
-                    <span className="text-slate-400 text-sm">/month</span>
-                  </div>
-                  <div className="text-sm text-violet-400 mt-1">{plan.credits} credits included</div>
-                </div>
-                <ul className="space-y-3 mb-8">
-                  {plan.features.map((f) => (
-                    <li key={f} className="flex items-center gap-2 text-sm text-slate-300">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-                <Link href="/signup">
-                  <Button
-                    variant={plan.popular ? "gradient" : "outline"}
-                    size="lg"
-                    className={`w-full ${!plan.popular && "border-white/20"}`}
-                  >
-                    {plan.cta}
-                  </Button>
-                </Link>
-              </div>
             ))}
           </div>
         </div>

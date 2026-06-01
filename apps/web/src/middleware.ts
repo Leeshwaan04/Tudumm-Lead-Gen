@@ -8,7 +8,7 @@ export default auth((req) => {
   const isAuthPage = pathname.startsWith('/login') || pathname.startsWith('/signup')
   const protectedPrefixes = [
     '/dashboard', '/actors', '/datasets', '/workflows', '/enrichment',
-    '/settings', '/playbooks', '/linkedin', '/schedules', '/billing',
+    '/settings', '/playbooks', '/linkedin', '/schedules',
     '/proxy', '/store', '/phantoms', '/leads', '/sequences', '/runs',
     '/analytics', '/members', '/webhooks', '/usage',
   ]
