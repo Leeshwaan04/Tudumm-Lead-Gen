@@ -137,7 +137,7 @@ function CreatedKeyModal({ apiKey, onClose }: { apiKey: string; onClose: () => v
           <h3 className="font-semibold">API Key Created</h3>
         </div>
         <div className="bg-black/40 border border-green-500/20 rounded-xl p-4">
-          <p className="text-xs text-white/40 mb-2">Copy this key now — it won't be shown again.</p>
+          <p className="text-xs text-white/40 mb-2">Copy this key now — it won&apos;t be shown again.</p>
           <div className="flex items-center gap-2">
             <code className="text-xs font-mono text-green-300 flex-1 break-all">{apiKey}</code>
             <button onClick={copy} className="p-1.5 rounded hover:bg-white/5 shrink-0">

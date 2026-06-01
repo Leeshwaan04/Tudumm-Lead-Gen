@@ -315,7 +315,7 @@ export default function LinkedInPage() {
                   <Shield className="h-4 w-4 text-green-400" />
                   <h3 className="font-medium">Platform Guidelines</h3>
                 </div>
-                <p className="text-xs text-white/30 mb-3">These are LinkedIn's recommended usage limits and safety practices. Tudumm enforces them automatically.</p>
+                <p className="text-xs text-white/30 mb-3">These are LinkedIn&apos;s recommended usage limits and safety practices. Tudumm enforces them automatically.</p>
                 <div className="grid grid-cols-2 gap-2">
                   {safetyRules.map(rule => (
                     <div key={rule} className="flex items-center gap-2 text-xs text-white/50">

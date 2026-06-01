@@ -56,7 +56,7 @@ export default function InboxPage() {
               <CheckCircle2 className="h-8 w-8 text-violet-400" />
             </div>
             <h3 className="font-semibold text-white">Inbox Zero</h3>
-            <p className="text-sm text-white/40 mt-1 max-w-[200px] leading-relaxed">You're all caught up! No new replies across your active channels.</p>
+            <p className="text-sm text-white/40 mt-1 max-w-[200px] leading-relaxed">You&apos;re all caught up! No new replies across your active channels.</p>
           </div>
         </div>
 
