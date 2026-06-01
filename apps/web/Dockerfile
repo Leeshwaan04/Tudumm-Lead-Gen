@@ -45,30 +45,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN addgroup --system --gid 1001 nodejs \
  && adduser --system --uid 1001 nextjs
 
-# Next.js standalone output
 COPY --from=builder /app/apps/web/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
-
-# Prisma client for workers
-COPY --from=builder /app/apps/web/prisma ./apps/web/prisma
-COPY --from=builder /app/apps/web/node_modules/.prisma ./apps/web/node_modules/.prisma
-COPY --from=builder /app/apps/web/node_modules/@prisma ./apps/web/node_modules/@prisma
-
-# Worker runtime deps
-COPY --from=builder /app/apps/web/node_modules/tsx ./apps/web/node_modules/tsx
-COPY --from=builder /app/apps/web/node_modules/bullmq ./apps/web/node_modules/bullmq
-COPY --from=builder /app/apps/web/node_modules/ioredis ./apps/web/node_modules/ioredis
-COPY --from=builder /app/apps/web/node_modules/nodemailer ./apps/web/node_modules/nodemailer
-COPY --from=builder /app/apps/web/node_modules/bcryptjs ./apps/web/node_modules/bcryptjs
-
-# Worker source files
-COPY --from=builder /app/apps/web/src/workers ./apps/web/src/workers
-COPY --from=builder /app/apps/web/src/lib ./apps/web/src/lib
-COPY --from=builder /app/apps/web/tsconfig.json ./apps/web/tsconfig.json
-
-COPY apps/web/entrypoint.sh ./entrypoint.sh
-RUN chmod +x ./entrypoint.sh
 
 USER nextjs
 
@@ -79,4 +58,4 @@ ENV HOSTNAME="0.0.0.0"
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
   CMD wget --spider -q http://localhost:3000/api/health || exit 1
 
-CMD ["./entrypoint.sh"]
+CMD ["node", "apps/web/server.js"]
