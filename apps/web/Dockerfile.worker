@@ -3,7 +3,7 @@
 FROM node:20-alpine AS base
 
 RUN apk add --no-cache \
-  libc6-compat chromium nss freetype freetype-dev harfbuzz \
+  libc6-compat openssl openssl-dev chromium nss freetype freetype-dev harfbuzz \
   ca-certificates ttf-freefont
 
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
