@@ -259,9 +259,6 @@ export default function ProxyPage() {
     }
   }
 
-  function handlePurchaseCredits() {
-    showToast('Redirecting to credits purchase…', 'info', 3000);
-  }
 
   return (
     <div className="p-6 overflow-y-auto flex-1 space-y-8 animate-in fade-in duration-500">
@@ -279,9 +276,6 @@ export default function ProxyPage() {
             className="bg-violet-600 hover:bg-violet-700 gap-2"
           >
             <Plus className="w-4 h-4" />Add Proxy
-          </Button>
-          <Button onClick={handlePurchaseCredits} className="bg-indigo-600 hover:bg-indigo-700">
-            Purchase Credits
           </Button>
         </div>
       </div>
@@ -456,11 +450,11 @@ export default function ProxyPage() {
           <CardContent className="space-y-6">
             <div className="space-y-4">
               <div className="flex justify-between items-center text-sm">
-                <span className="text-muted-foreground">Traffic used</span>
-                <span>12.4 GB / 20 GB</span>
+                <span className="text-muted-foreground">Proxy configs</span>
+                <span>{proxies.length} configured</span>
               </div>
               <div className="h-2 w-full bg-[#27272a] rounded-full overflow-hidden">
-                <div className="h-full bg-indigo-500 w-[62%]" />
+                <div className="h-full bg-indigo-500" style={{ width: proxies.length > 0 ? '100%' : '0%' }} />
               </div>
             </div>
 

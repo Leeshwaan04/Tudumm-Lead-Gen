@@ -14,13 +14,19 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { signOut } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 
 export function Topbar() {
   const { currentWorkspace, workspaces, currentUser, setCurrentWorkspace, sidebarCollapsed, toggleMobileOpen } =
     useWorkspaceStore();
+  const { data: session, status } = useSession();
   const [workspacesOpen, setWorkspacesOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+
+  // Use session directly for instant display — no async fetch needed
+  const displayName = currentUser?.name ?? session?.user?.name ?? "";
+  const displayEmail = currentUser?.email ?? session?.user?.email ?? "";
+  const workspaceLoading = status === "loading" || (!currentWorkspace && status === "authenticated");
 
   return (
     <header
@@ -51,7 +57,11 @@ export function Topbar() {
           <div className="flex h-5 w-5 items-center justify-center rounded bg-gradient-to-br from-violet-500 to-indigo-500">
             <Building2 className="h-3 w-3 text-white" />
           </div>
-          <span className="max-w-[120px] truncate">{currentWorkspace?.name ?? "Select workspace"}</span>
+          {workspaceLoading ? (
+            <span className="max-w-[120px] h-3.5 w-24 rounded animate-pulse bg-white/10 inline-block" />
+          ) : (
+            <span className="max-w-[120px] truncate">{currentWorkspace?.name ?? "My Workspace"}</span>
+          )}
           <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
         </button>
 
@@ -109,10 +119,10 @@ export function Topbar() {
           className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-white/5 transition-colors"
         >
           <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-indigo-600 text-xs font-bold text-white">
-            {currentUser?.name?.[0] ?? "U"}
+            {displayName?.[0]?.toUpperCase() ?? "U"}
           </div>
           <span className="hidden sm:block text-sm text-white font-medium max-w-[100px] truncate">
-            {currentUser?.name}
+            {displayName}
           </span>
           <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
         </button>
@@ -120,8 +130,8 @@ export function Topbar() {
         {userMenuOpen && (
           <div className="absolute right-0 top-full mt-1 w-56 rounded-xl border border-white/10 bg-slate-900 shadow-2xl py-1 z-50">
             <div className="px-3 py-2 border-b border-white/10">
-              <div className="font-medium text-sm text-white">{currentUser?.name}</div>
-              <div className="text-xs text-slate-400">{currentUser?.email}</div>
+              <div className="font-medium text-sm text-white">{displayName}</div>
+              <div className="text-xs text-slate-400">{displayEmail}</div>
             </div>
             <Link
               href="/settings"
