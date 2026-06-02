@@ -13,7 +13,7 @@ export async function GET() {
     orderBy: { createdAt: 'desc' },
   })
 
-  return NextResponse.json(sequences)
+  return NextResponse.json(sequences.map(s => ({ ...s, steps: JSON.parse(s.steps) })))
 }
 
 export async function POST(req: Request) {

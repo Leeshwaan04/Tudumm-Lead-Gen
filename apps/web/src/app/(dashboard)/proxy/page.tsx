@@ -225,29 +225,41 @@ export default function ProxyPage() {
       : '8,450';
 
   // Handlers
-  function handleTestConnectivity() {
+  async function handleTestConnectivity() {
     if (testingConn) return;
+    if (!activeProxy) { showToast('No proxy configured to test.', 'error', 3000); return; }
     setTestingConn(true);
     showToast('Testing connection…', 'info', 2000);
-    setTimeout(() => {
+    try {
+      const res = await fetch(`/api/proxy/${activeProxy.id}/test`, { method: 'POST' });
+      const data = await res.json();
       setTestingConn(false);
-      const success = Math.random() > 0.2;
-      showToast(
-        success ? 'Connection test passed — proxy is reachable.' : 'Connection test failed — check your config.',
-        success ? 'success' : 'error',
-        4000,
-      );
-    }, 1500);
+      if (res.ok && data.ok) {
+        showToast(`Connection test passed — proxy reachable (${data.latencyMs ?? '?'}ms).`, 'success', 4000);
+      } else {
+        showToast(data.error ?? 'Connection test failed — check your config.', 'error', 4000);
+      }
+    } catch {
+      setTestingConn(false);
+      showToast('Connection test failed — network error.', 'error', 4000);
+    }
   }
 
-  function handleOptimize() {
-    if (optimizing) return;
+  async function handleOptimize() {
+    if (optimizing || !activeProxy) return;
     setOptimizing(true);
-    showToast('Optimizing…', 'info', 2000);
-    setTimeout(() => {
-      setOptimizing(false);
-      showToast('Optimization complete — success rate improved.', 'success', 4000);
-    }, 1500);
+    showToast('Optimizing proxy selection…', 'info', 2000);
+    try {
+      await fetch(`/api/proxy/${activeProxy.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isActive: true }),
+      });
+      showToast('Proxy configuration saved.', 'success', 4000);
+    } catch {
+      showToast('Failed to save proxy configuration.', 'error', 4000);
+    }
+    setOptimizing(false);
   }
 
   async function handleCopyEndpoint() {

@@ -33,7 +33,9 @@ export async function GET(req: Request) {
     const rows = leads.map(l =>
       headers.map(h => {
         const val = (l as any)[h] ?? ''
-        const str = String(val)
+        let str = String(val)
+        // Prevent CSV formula injection (Excel/Sheets executes cells starting with =, +, -, @)
+        if (/^[=+\-@\t\r]/.test(str)) str = `'${str}`
         return str.includes(',') || str.includes('"') ? `"${str.replace(/"/g, '""')}"` : str
       }).join(',')
     )

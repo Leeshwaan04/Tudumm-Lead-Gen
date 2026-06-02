@@ -5,7 +5,7 @@ export async function GET(req: Request) {
   // Ensure it's called internally or via a cron scheduler with a secret
   const authHeader = req.headers.get('authorization')
   const cronSecret = process.env.CRON_SECRET
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return new NextResponse('Unauthorized', { status: 401 })
   }
 
