@@ -1,7 +1,10 @@
 'use client'
 
-import { MessageSquare, Mail, Linkedin, Search, Inbox as InboxIcon, CheckCircle2, Loader2, RefreshCw, Clock, User } from 'lucide-react'
-import { useState, useEffect, useCallback } from 'react'
+import {
+  MessageSquare, Mail, Linkedin, Search, Inbox as InboxIcon,
+  CheckCircle2, Loader2, RefreshCw, User, Send, CheckCheck,
+} from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 
 interface Reply {
@@ -18,8 +21,9 @@ interface Reply {
   note: string | null
 }
 
-function platformIcon(platform: string) {
-  if (platform === 'linkedin' || platform === 'LINKEDIN') return <Linkedin className="h-3.5 w-3.5 text-blue-400" />
+function PlatformIcon({ platform }: { platform: string }) {
+  if (platform === 'linkedin' || platform === 'LINKEDIN')
+    return <Linkedin className="h-3.5 w-3.5 text-blue-400" />
   return <Mail className="h-3.5 w-3.5 text-violet-400" />
 }
 
@@ -39,11 +43,15 @@ export default function InboxPage() {
   const [replies, setReplies] = useState<Reply[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<Reply | null>(null)
+  const [noteInput, setNoteInput] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [handledIds, setHandledIds] = useState<Set<string>>(new Set())
+  const [loggedNotes, setLoggedNotes] = useState<Record<string, string[]>>({})
+  const noteRef = useRef<HTMLTextAreaElement>(null)
 
   const fetchReplies = useCallback(async () => {
     setLoading(true)
     try {
-      // Fetch sequence leads that have replied (replyCount > 0 or status === 'REPLIED')
       const res = await fetch('/api/inbox/replies')
       if (res.ok) {
         const data = await res.json()
@@ -64,8 +72,44 @@ export default function InboxPage() {
     return !q || r.leadName.toLowerCase().includes(q) || r.sequenceName.toLowerCase().includes(q)
   })
 
+  async function handleMarkHandled(r: Reply) {
+    setSubmitting(true)
+    try {
+      await fetch(`/api/inbox/replies/${r.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'handled', leadId: r.leadId }),
+      })
+      setHandledIds(prev => new Set([...prev, r.id]))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleLogNote(r: Reply) {
+    if (!noteInput.trim()) return
+    setSubmitting(true)
+    try {
+      await fetch(`/api/inbox/replies/${r.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'note', note: noteInput.trim(), leadId: r.leadId }),
+      })
+      setLoggedNotes(prev => ({
+        ...prev,
+        [r.id]: [...(prev[r.id] ?? []), noteInput.trim()],
+      }))
+      setNoteInput('')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const isHandled = (r: Reply) => handledIds.has(r.id)
+
   return (
     <div className="flex h-full flex-col min-w-0">
+      {/* Header */}
       <div className="flex items-center justify-between p-4 md:p-6 border-b border-white/10 shrink-0">
         <div>
           <h1 className="text-xl md:text-2xl font-semibold flex items-center gap-2">
@@ -74,9 +118,12 @@ export default function InboxPage() {
           </h1>
           <p className="text-xs md:text-sm text-white/50 mt-1">Replies from your active sequences</p>
         </div>
-        <button onClick={fetchReplies} className="p-2 border border-white/10 rounded-lg hover:bg-white/5 transition-colors">
-          <RefreshCw className="h-4 w-4 text-white/40" />
-        </button>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-white/30">{replies.length} thread{replies.length !== 1 ? 's' : ''}</span>
+          <button onClick={fetchReplies} className="p-2 border border-white/10 rounded-lg hover:bg-white/5 transition-colors">
+            <RefreshCw className="h-4 w-4 text-white/40" />
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-1 min-h-0 flex-col md:flex-row">
@@ -118,7 +165,9 @@ export default function InboxPage() {
                   <CheckCircle2 className="h-7 w-7 text-violet-400" />
                 </div>
                 <h3 className="font-semibold text-white text-sm">Inbox Zero</h3>
-                <p className="text-xs text-white/40 mt-1 leading-relaxed">No replies yet. Replies from your active sequences will appear here.</p>
+                <p className="text-xs text-white/40 mt-1 leading-relaxed">
+                  No replies yet. Replies from your active sequences will appear here.
+                </p>
                 <Link href="/sequences" className="mt-3 text-xs text-violet-400 hover:text-violet-300 transition-colors">
                   Go to Sequences →
                 </Link>
@@ -127,13 +176,14 @@ export default function InboxPage() {
               filtered.map(r => (
                 <button
                   key={r.id}
-                  onClick={() => setSelected(r)}
-                  className={`w-full text-left p-3 border-b border-white/5 hover:bg-white/5 transition-colors ${selected?.id === r.id ? 'bg-white/8 border-l-2 border-l-violet-500' : ''}`}
+                  onClick={() => { setSelected(r); setNoteInput('') }}
+                  className={`w-full text-left p-3 border-b border-white/5 hover:bg-white/5 transition-colors ${selected?.id === r.id ? 'bg-white/[0.08] border-l-2 border-l-violet-500' : ''}`}
                 >
                   <div className="flex items-start justify-between gap-2 mb-1">
                     <div className="flex items-center gap-1.5 min-w-0">
-                      {platformIcon(r.platform)}
-                      <span className="text-sm font-medium truncate">{r.leadName}</span>
+                      <PlatformIcon platform={r.platform} />
+                      <span className={`text-sm font-medium truncate ${isHandled(r) ? 'text-white/40 line-through' : ''}`}>{r.leadName}</span>
+                      {isHandled(r) && <CheckCheck className="h-3 w-3 text-green-400 shrink-0" />}
                     </div>
                     <span className="text-xs text-white/30 shrink-0">{timeAgo(r.repliedAt)}</span>
                   </div>
@@ -149,49 +199,124 @@ export default function InboxPage() {
         <div className={`${selected ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-w-0`}>
           {selected ? (
             <div className="flex flex-col h-full">
+              {/* Thread Header */}
               <div className="p-4 border-b border-white/10 flex items-center gap-3">
                 <button onClick={() => setSelected(null)} className="md:hidden p-1.5 border border-white/10 rounded-lg hover:bg-white/5">
                   ←
                 </button>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    {platformIcon(selected.platform)}
+                    <PlatformIcon platform={selected.platform} />
                     <h2 className="font-semibold text-white truncate">{selected.leadName}</h2>
+                    {isHandled(selected) && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20 flex items-center gap-1">
+                        <CheckCheck className="h-3 w-3" /> Handled
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-white/40 mt-0.5">
-                    {selected.leadEmail || selected.leadLinkedin || 'No contact info'} · via <Link href={`/sequences/${selected.sequenceId}`} className="text-violet-400 hover:underline">{selected.sequenceName}</Link>
+                    {selected.leadEmail || selected.leadLinkedin || 'No contact info'} · via{' '}
+                    <Link href={`/sequences/${selected.sequenceId}`} className="text-violet-400 hover:underline">
+                      {selected.sequenceName}
+                    </Link>
                   </p>
                 </div>
-              </div>
-              <div className="flex-1 overflow-y-auto p-6 flex flex-col items-center justify-center text-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
-                  <CheckCircle2 className="h-6 w-6 text-green-400" />
-                </div>
-                <div>
-                  <p className="font-medium text-white">Reply detected at Step {selected.stepIndex + 1}</p>
-                  <p className="text-sm text-white/50 mt-1">{new Date(selected.repliedAt).toLocaleString()}</p>
-                </div>
-                {selected.note && (
-                  <div className="max-w-sm bg-white/5 border border-white/10 rounded-xl p-4 text-sm text-white/70 italic text-left">
-                    &ldquo;{selected.note}&rdquo;
-                  </div>
-                )}
-                <div className="flex gap-3 mt-2">
+                <div className="flex items-center gap-2 shrink-0">
                   <Link
                     href={`/leads?id=${selected.leadId}`}
-                    className="flex items-center gap-1.5 px-3 py-2 bg-violet-600/20 border border-violet-500/30 text-violet-300 hover:bg-violet-600/30 rounded-lg text-sm transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-white/10 hover:bg-white/10 rounded-lg text-xs transition-colors text-white/70"
                   >
-                    <User className="h-3.5 w-3.5" /> View Lead
+                    <User className="h-3.5 w-3.5" /> Lead
                   </Link>
                   {selected.leadLinkedin && (
                     <a
                       href={selected.leadLinkedin}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 px-3 py-2 border border-white/10 hover:bg-white/5 rounded-lg text-sm transition-colors text-white/70"
+                      className="flex items-center gap-1.5 px-3 py-1.5 border border-white/10 hover:bg-white/5 rounded-lg text-xs transition-colors text-white/70"
                     >
-                      <Linkedin className="h-3.5 w-3.5" /> Open LinkedIn
+                      <Linkedin className="h-3.5 w-3.5" />
                     </a>
+                  )}
+                </div>
+              </div>
+
+              {/* Message Thread */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {/* Original reply event */}
+                <div className="flex gap-3">
+                  <div className="h-8 w-8 rounded-full bg-violet-500/20 flex items-center justify-center shrink-0 text-xs font-bold text-violet-400">
+                    {selected.leadName[0]?.toUpperCase()}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-sm font-medium text-white">{selected.leadName}</span>
+                      <span className="text-xs text-white/30">{new Date(selected.repliedAt).toLocaleString()}</span>
+                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">
+                        Replied · Step {selected.stepIndex + 1}
+                      </span>
+                    </div>
+                    <div className="bg-white/5 border border-white/10 rounded-xl rounded-tl-none p-3 text-sm text-white/80">
+                      {selected.note
+                        ? <span className="italic">&ldquo;{selected.note}&rdquo;</span>
+                        : <span className="text-white/40 italic">Reply detected — no message body captured yet. Log a note below.</span>
+                      }
+                    </div>
+                  </div>
+                </div>
+
+                {/* Previously logged notes */}
+                {(loggedNotes[selected.id] ?? []).map((n, i) => (
+                  <div key={i} className="flex gap-3 justify-end">
+                    <div className="max-w-sm">
+                      <div className="bg-violet-600/20 border border-violet-500/20 rounded-xl rounded-tr-none p-3 text-sm text-white/80">
+                        {n}
+                      </div>
+                      <p className="text-xs text-white/30 text-right mt-1">You · just now</p>
+                    </div>
+                    <div className="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center shrink-0 text-xs font-bold text-white/60">
+                      Me
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Action bar */}
+              <div className="border-t border-white/10 p-4 space-y-3">
+                <div className="flex gap-2">
+                  <textarea
+                    ref={noteRef}
+                    rows={2}
+                    value={noteInput}
+                    onChange={e => setNoteInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleLogNote(selected)
+                    }}
+                    placeholder="Log a note or reply content... (⌘+Enter to save)"
+                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white placeholder:text-white/30 outline-none focus:border-violet-500/50 resize-none"
+                  />
+                  <button
+                    onClick={() => handleLogNote(selected)}
+                    disabled={submitting || !noteInput.trim()}
+                    className="px-3 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 rounded-xl transition-colors self-end"
+                  >
+                    {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  </button>
+                </div>
+                <div className="flex justify-between items-center">
+                  <p className="text-xs text-white/30">Sequence: {selected.sequenceName} · {selected.leadEmail ?? selected.leadLinkedin ?? '—'}</p>
+                  {!isHandled(selected) ? (
+                    <button
+                      onClick={() => handleMarkHandled(selected)}
+                      disabled={submitting}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600/20 border border-green-500/30 text-green-400 hover:bg-green-600/30 rounded-lg text-xs transition-colors disabled:opacity-40"
+                    >
+                      <CheckCheck className="h-3.5 w-3.5" /> Mark Handled
+                    </button>
+                  ) : (
+                    <span className="flex items-center gap-1.5 text-xs text-green-400">
+                      <CheckCheck className="h-3.5 w-3.5" /> Handled
+                    </span>
                   )}
                 </div>
               </div>
@@ -203,7 +328,7 @@ export default function InboxPage() {
                   <MessageSquare className="h-7 w-7 text-violet-400" />
                 </div>
                 <h2 className="text-base font-medium text-white mb-2">No Thread Selected</h2>
-                <p className="text-sm text-white/40 leading-relaxed">Select a reply to view details and take action.</p>
+                <p className="text-sm text-white/40 leading-relaxed">Select a reply to view the thread, log notes, and mark it handled.</p>
               </div>
             </div>
           )}
