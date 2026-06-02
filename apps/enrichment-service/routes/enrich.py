@@ -3,7 +3,7 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional
 import logging
 
-from services.claude_client import generate_message, generate_structured
+from services.groq_client import generate_message, generate_structured
 from services.email_service import find_email, verify_email
 from services.credits import deduct_credits, check_credits, InsufficientCreditsError, BillingUnavailableError
 from services.input_sanitizer import sanitize_text, sanitize_context

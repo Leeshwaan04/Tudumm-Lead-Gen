@@ -2,15 +2,15 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
 
-// ─── Claude-powered enrichment ────────────────────────────────────────────────
+// ─── Groq-powered enrichment (Llama 3.1 70B — free tier) ─────────────────────
 
-async function enrichWithClaude(lead: {
+async function enrichWithGroq(lead: {
   fullName: string
   title?: string | null
   company?: string | null
   linkedinUrl?: string | null
 }): Promise<{ icpScore: number; emailStatus: string; aiSummary: string; outreachAngle: string }> {
-  const apiKey = process.env.ANTHROPIC_API_KEY
+  const apiKey = process.env.GROQ_API_KEY
 
   if (!apiKey) {
     return fallbackEnrich(lead.title)
@@ -31,22 +31,25 @@ Return ONLY a JSON object (no prose) with these exact fields:
 }`
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'llama-3.1-70b-versatile',
         max_tokens: 512,
-        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.3,
+        messages: [
+          { role: 'system', content: 'You are a B2B sales assistant. Always respond with valid JSON only.' },
+          { role: 'user', content: prompt },
+        ],
       }),
     })
 
     const data = await res.json()
-    const text: string = data.content?.[0]?.text ?? '{}'
+    const text: string = data.choices?.[0]?.message?.content ?? '{}'
     const match = text.match(/\{[\s\S]*\}/)
     if (match) {
       const parsed = JSON.parse(match[0])
@@ -135,7 +138,7 @@ export async function POST(req: Request) {
         continue
       }
 
-      const enrichment = await enrichWithClaude({
+      const enrichment = await enrichWithGroq({
         fullName: lead.fullName,
         title: lead.title,
         company: lead.company,
@@ -157,7 +160,7 @@ export async function POST(req: Request) {
           workspaceId,
           leadId,
           status: 'DONE',
-          providers: JSON.stringify(providers ?? ['Claude AI', 'Hunter', 'Apollo']),
+          providers: JSON.stringify(providers ?? ['Groq AI', 'Hunter', 'Apollo']),
           results: JSON.stringify(enrichment),
           creditsUsed: 1,
         },
