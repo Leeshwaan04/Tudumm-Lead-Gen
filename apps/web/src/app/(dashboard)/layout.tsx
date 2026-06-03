@@ -33,12 +33,16 @@ export default function DashboardLayout({
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/workspace")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((ws) => {
-        if (cancelled || !ws || ws.error) return;
-        setCurrentWorkspace(ws);
-        setWorkspaces([ws]);
+    // Current (active) workspace from the session, plus the full list for the switcher.
+    Promise.all([
+      fetch("/api/workspace").then((r) => (r.ok ? r.json() : null)),
+      fetch("/api/workspaces").then((r) => (r.ok ? r.json() : [])),
+    ])
+      .then(([ws, list]) => {
+        if (cancelled) return;
+        if (ws && !ws.error) setCurrentWorkspace(ws);
+        if (Array.isArray(list) && list.length) setWorkspaces(list);
+        else if (ws && !ws.error) setWorkspaces([ws]);
       })
       .catch(() => {});
     return () => { cancelled = true; };

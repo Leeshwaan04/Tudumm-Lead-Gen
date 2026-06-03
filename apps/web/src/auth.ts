@@ -9,10 +9,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: 'jwt' },
   pages: { signIn: '/login', error: '/error' },
   callbacks: {
-    jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id
         token.workspaceId = (user as any).workspaceId
+      }
+      // Active-workspace switch: client calls useSession().update({ workspaceId }).
+      // Validate membership server-side before honoring it (tenant isolation).
+      if (trigger === 'update' && session?.workspaceId && token.id) {
+        const member = await prisma.workspaceMember.findFirst({
+          where: { userId: token.id as string, workspaceId: session.workspaceId },
+        })
+        if (member) token.workspaceId = session.workspaceId
       }
       return token
     },

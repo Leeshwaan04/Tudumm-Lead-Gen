@@ -19,9 +19,40 @@ import { signOut, useSession } from "next-auth/react";
 export function Topbar() {
   const { currentWorkspace, workspaces, currentUser, setCurrentWorkspace, sidebarCollapsed, toggleMobileOpen } =
     useWorkspaceStore();
-  const { data: session, status } = useSession();
+  const { data: session, status, update } = useSession();
   const [workspacesOpen, setWorkspacesOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
+
+  // Switch the active workspace: update the session's workspaceId (validated
+  // server-side), then reload so all data refetches under the new workspace.
+  async function switchWorkspace(ws: { id: string; name: string }) {
+    if (switching || currentWorkspace?.id === ws.id) { setWorkspacesOpen(false); return; }
+    setSwitching(true);
+    setCurrentWorkspace(ws as never);
+    await update({ workspaceId: ws.id });
+    window.location.reload();
+  }
+
+  async function createWorkspace() {
+    const name = window.prompt("Name your new workspace");
+    if (!name || !name.trim()) return;
+    setSwitching(true);
+    try {
+      const res = await fetch("/api/workspaces", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim() }),
+      });
+      if (!res.ok) throw new Error("create failed");
+      const ws = await res.json();
+      await update({ workspaceId: ws.id });
+      window.location.reload();
+    } catch {
+      setSwitching(false);
+      alert("Could not create workspace. Please try again.");
+    }
+  }
 
   // Use session directly for instant display — no async fetch needed
   const displayName = currentUser?.name ?? session?.user?.name ?? "";
@@ -73,11 +104,9 @@ export function Topbar() {
             {workspaces.map((ws) => (
               <button
                 key={ws.id}
-                onClick={() => {
-                  setCurrentWorkspace(ws);
-                  setWorkspacesOpen(false);
-                }}
-                className="flex w-full items-center gap-3 px-3 py-2 text-sm text-white hover:bg-white/5 transition-colors"
+                onClick={() => switchWorkspace(ws)}
+                disabled={switching}
+                className="flex w-full items-center gap-3 px-3 py-2 text-sm text-white hover:bg-white/5 transition-colors disabled:opacity-50"
               >
                 <div className="flex h-6 w-6 items-center justify-center rounded bg-gradient-to-br from-violet-500 to-indigo-500 text-xs font-bold text-white">
                   {ws.name[0]}
@@ -92,7 +121,11 @@ export function Topbar() {
               </button>
             ))}
             <div className="border-t border-white/10 mt-1 pt-1">
-              <button className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors">
+              <button
+                onClick={createWorkspace}
+                disabled={switching}
+                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors disabled:opacity-50"
+              >
                 <Building2 className="h-4 w-4" />
                 Create workspace
               </button>
