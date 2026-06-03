@@ -181,8 +181,20 @@ async function executeStep(step: any, lead: any, sequence: any): Promise<boolean
     throw new Error('LinkedIn session reached its daily limit')
   }
 
-  const rawCookie = decryptCookie(session.sessionCookie)
-  
+  // Decrypt the stored cookie. Sessions encrypted under a different/old
+  // COOKIE_CIPHER_KEY will fail the AES-GCM auth check — mark them EXPIRED so
+  // they stop being retried every tick and the user is prompted to re-auth.
+  let rawCookie: string
+  try {
+    rawCookie = decryptCookie(session.sessionCookie)
+  } catch {
+    await prisma.linkedInSession.update({
+      where: { id: session.id },
+      data: { status: 'EXPIRED' },
+    })
+    throw new Error('LinkedIn session could not be decrypted (re-authentication required)')
+  }
+
   try {
     if (step.type === 'CONNECTION_REQUEST') {
       await sendLinkedInConnection(
