@@ -47,7 +47,7 @@ async function realScrapeRun(
 
   const extractScript = typeof (input as any)?.extractScript === 'string' ? (input as any).extractScript : undefined
 
-  const res = await fetch(`${BROWSER_SERVICE_URL}/scrape`, {
+  const res = await fetch(`${BROWSER_SERVICE_URL}/browser/scrape`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url, waitFor: 'domcontentloaded', extractScript }),
