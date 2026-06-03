@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db'
-import nodemailer from 'nodemailer'
+import { sendMail } from '@/lib/mailer'
 import { randomUUID } from 'crypto'
 import { parseSequenceSteps, SequenceStepError } from '@/lib/sequence-steps'
 import { interpolate, wrapHtmlEmail, unsubscribeUrl } from '@/lib/email'
@@ -226,22 +226,11 @@ async function executeStep(step: any, lead: any, sequence: any): Promise<boolean
 async function sendEmail(step: any, lead: any): Promise<boolean> {
   if (!lead.email) return false
 
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST ?? 'localhost',
-    port: parseInt(process.env.SMTP_PORT ?? '1025', 10),
-    secure: process.env.SMTP_PORT === '465',
-    auth: process.env.SMTP_USER
-      ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
-      : undefined,
-    ignoreTLS: !process.env.SMTP_USER,
-  } as any)
-
   const subject = interpolate(step.subject ?? 'Following up', lead)
   const textBody = interpolate(step.message ?? step.body ?? '', lead)
   const unsubUrl = unsubscribeUrl(lead.id)
 
-  await transporter.sendMail({
-    from: process.env.EMAIL_FROM ?? 'noreply@tudumm.io',
+  await sendMail({
     to: lead.email,
     subject,
     text: `${textBody}\n\n---\nUnsubscribe: ${unsubUrl}`,

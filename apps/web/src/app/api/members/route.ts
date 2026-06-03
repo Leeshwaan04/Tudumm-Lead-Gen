@@ -2,23 +2,10 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
 import { requireMember, requireAdmin } from '@/lib/authz'
 import { randomBytes } from 'crypto'
-import nodemailer from 'nodemailer'
-
-function getMailer() {
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST ?? 'localhost',
-    port: parseInt(process.env.SMTP_PORT ?? '587', 10),
-    secure: process.env.SMTP_PORT === '465',
-    auth: process.env.SMTP_USER
-      ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
-      : undefined,
-  } as any)
-}
+import { sendMail } from '@/lib/mailer'
 
 async function sendInviteEmail(to: string, acceptUrl: string, workspaceName: string) {
-  const mailer = getMailer()
-  await mailer.sendMail({
-    from: process.env.EMAIL_FROM ?? 'noreply@tudumm.io',
+  await sendMail({
     to,
     subject: `You've been invited to ${workspaceName} on Tudumm`,
     text: `You've been invited to join ${workspaceName} on Tudumm.\n\nAccept your invitation here:\n${acceptUrl}\n\nThis link expires in 7 days.`,
