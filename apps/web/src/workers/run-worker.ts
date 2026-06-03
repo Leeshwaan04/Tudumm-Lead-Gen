@@ -2,14 +2,84 @@ import { Worker } from 'bullmq'
 import { prisma } from '../lib/db'
 import type { RunJobData } from '../lib/queue'
 import { redisConnection as connection } from '../lib/redis-connection'
+import { uploadJSON } from '../lib/storage'
 import crypto from 'crypto'
 
 const JOB_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
 const MAX_CONCURRENT = 3
 const activeRunIds = new Set<string>()
+const BROWSER_SERVICE_URL = process.env.BROWSER_SERVICE_URL || 'http://localhost:8007'
 
 async function addLog(runId: string, level: 'INFO' | 'WARN' | 'ERROR', message: string) {
   await prisma.runLog.create({ data: { runId, level, message } })
+}
+
+/** Pull the first scrapeable URL out of an arbitrary actor input. */
+function extractUrl(input: Record<string, unknown> | undefined): string | null {
+  if (!input) return null
+  const candidates = [input.url, input.startUrl, input.targetUrl, input.website]
+  for (const c of candidates) {
+    if (typeof c === 'string' && /^https?:\/\//i.test(c)) return c
+  }
+  // startUrls: ["..."] or [{ url: "..." }]
+  const list = input.startUrls ?? input.urls
+  if (Array.isArray(list) && list.length > 0) {
+    const first = list[0]
+    if (typeof first === 'string' && /^https?:\/\//i.test(first)) return first
+    if (first && typeof first === 'object' && typeof (first as any).url === 'string') return (first as any).url
+  }
+  return null
+}
+
+/**
+ * Real actor run: scrape a live URL via browser-service and persist the
+ * extracted items to MinIO so the dataset is genuinely downloadable.
+ * Used when the actor input contains a URL. Throws on hard failure so the
+ * caller can fall back to simulation.
+ */
+async function realScrapeRun(
+  data: RunJobData,
+  url: string,
+): Promise<{ items: Record<string, unknown>[]; creditsCost: number }> {
+  const { runId, input } = data
+  await prisma.run.update({ where: { id: runId }, data: { status: 'RUNNING', startedAt: new Date() } })
+  await addLog(runId, 'INFO', `Actor started — scraping ${url}`)
+
+  const extractScript = typeof (input as any)?.extractScript === 'string' ? (input as any).extractScript : undefined
+
+  const res = await fetch(`${BROWSER_SERVICE_URL}/scrape`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, waitFor: 'domcontentloaded', extractScript }),
+    signal: AbortSignal.timeout(120000),
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`browser-service /scrape failed: ${res.status} ${body.slice(0, 200)}`)
+  }
+  const result: any = await res.json()
+  if (result.blocked) await addLog(runId, 'WARN', 'Target returned a block/challenge page')
+  await addLog(runId, 'INFO', `Fetched ${url} (status ${result.status ?? '?'}, ${result.attempts ?? 1} attempt(s))`)
+
+  // Normalise extracted output into an array of item objects.
+  let items: Record<string, unknown>[]
+  if (Array.isArray(result.extracted)) {
+    items = result.extracted
+  } else if (result.extracted && typeof result.extracted === 'object') {
+    items = [result.extracted]
+  } else {
+    const text = typeof result.text === 'string' ? result.text : ''
+    items = [{
+      url: result.url ?? url,
+      title: (text.match(/^(.{0,120})/)?.[1] ?? '').trim(),
+      text: text.slice(0, 5000),
+      httpStatus: result.status ?? null,
+      scrapedAt: new Date().toISOString(),
+    }]
+  }
+
+  await addLog(runId, 'INFO', `Extracted ${items.length} item(s)`)
+  return { items, creditsCost: Math.max(1, Math.ceil(items.length * 0.05)) }
 }
 
 function generateItems(slug: string, count: number): Record<string, unknown>[] {
@@ -65,7 +135,7 @@ function generateItems(slug: string, count: number): Record<string, unknown>[] {
   return items
 }
 
-async function simulateActorRun(data: RunJobData): Promise<{ itemsScraped: number; creditsCost: number }> {
+async function simulateActorRun(data: RunJobData): Promise<{ items: Record<string, unknown>[]; creditsCost: number }> {
   const { runId, actorSlug } = data
 
   await prisma.run.update({ where: { id: runId }, data: { status: 'RUNNING', startedAt: new Date() } })
@@ -79,31 +149,17 @@ async function simulateActorRun(data: RunJobData): Promise<{ itemsScraped: numbe
   await new Promise(r => setTimeout(r, 800))
 
   const slug = actorSlug ?? 'generic'
-  let targetUrl = 'https://example.com'
-  if (slug.includes('linkedin')) targetUrl = 'https://linkedin.com/search/results/people'
-  else if (slug.includes('google-maps')) targetUrl = 'https://google.com/maps'
-  else if (slug.includes('twitter')) targetUrl = 'https://twitter.com/search'
-  else if (slug.includes('github')) targetUrl = 'https://github.com/search'
-  else if (slug.includes('instagram')) targetUrl = 'https://instagram.com/explore'
-
-  await addLog(runId, 'INFO', `Navigating to ${targetUrl}`)
+  await addLog(runId, 'INFO', 'Collecting results')
   await new Promise(r => setTimeout(r, 1000))
 
-  const itemCount = Math.floor(Math.random() * 200) + 50
-  await addLog(runId, 'INFO', `Found ${itemCount} results on page 1`)
-  await new Promise(r => setTimeout(r, 500))
+  const itemCount = Math.floor(Math.random() * 40) + 10
+  const items = generateItems(slug, itemCount)
+  await addLog(runId, 'INFO', `Generated ${itemCount} sample items (simulated — no URL provided)`)
 
-  await addLog(runId, 'WARN', 'Rate limit detected — backing off 2s')
-  await new Promise(r => setTimeout(r, 2000))
-
-  await addLog(runId, 'INFO', 'Resuming scrape...')
-  await new Promise(r => setTimeout(r, 1000))
-
-  const creditsCost = Math.floor(itemCount * 0.05)
-  await addLog(runId, 'INFO', `Pushed ${itemCount} items to dataset`)
+  const creditsCost = Math.max(1, Math.floor(itemCount * 0.05))
   await addLog(runId, 'INFO', 'Actor finished successfully')
 
-  return { itemsScraped: itemCount, creditsCost }
+  return { items, creditsCost }
 }
 
 async function deliverWebhooks(workspaceId: string, payload: Record<string, unknown>) {
@@ -161,8 +217,35 @@ const worker = new Worker<RunJobData>(
       } catch { /* ignore */ }
     }, JOB_TIMEOUT_MS)
 
+    const startedMs = Date.now()
     try {
-      const { itemsScraped, creditsCost } = await simulateActorRun(job.data)
+      // Real scrape when the input carries a URL; otherwise fall back to a
+      // simulated sample run. Either path produces real, downloadable items.
+      const url = extractUrl(job.data.input)
+      let items: Record<string, unknown>[]
+      let creditsCost: number
+      if (url) {
+        try {
+          ({ items, creditsCost } = await realScrapeRun(job.data, url))
+        } catch (scrapeErr) {
+          await addLog(runId, 'ERROR', `Real scrape failed (${String(scrapeErr).slice(0, 200)}) — falling back to sample data`)
+          ;({ items, creditsCost } = await simulateActorRun(job.data))
+        }
+      } else {
+        ({ items, creditsCost } = await simulateActorRun(job.data))
+      }
+      const itemsScraped = items.length
+
+      // Persist the actual items to MinIO so the dataset is downloadable.
+      const s3Key = `datasets/${workspaceId}/${runId}/data.json`
+      let sizeBytes = itemsScraped * 512
+      try {
+        await uploadJSON(s3Key, items)
+        sizeBytes = Buffer.byteLength(JSON.stringify(items))
+        await addLog(runId, 'INFO', `Pushed ${itemsScraped} items to dataset storage`)
+      } catch (upErr) {
+        await addLog(runId, 'WARN', `Failed to persist items to storage: ${String(upErr).slice(0, 160)}`)
+      }
 
       // Create dataset record
       const dataset = await prisma.dataset.create({
@@ -171,15 +254,15 @@ const worker = new Worker<RunJobData>(
           runId,
           name: `${job.data.actorSlug} - ${new Date().toLocaleDateString()}`,
           itemCount: itemsScraped,
-          sizeBytes: itemsScraped * 512,
-          s3Key: `datasets/${workspaceId}/${runId}/data.json`,
+          sizeBytes,
+          s3Key,
         },
       })
 
       // Credits are not charged — Tudumm is free for all users.
       // creditsCost is still recorded on the run for display/analytics only.
 
-      const durationMs = Math.floor(Math.random() * 300000) + 60000
+      const durationMs = Date.now() - startedMs
 
       await prisma.run.update({
         where: { id: runId },
