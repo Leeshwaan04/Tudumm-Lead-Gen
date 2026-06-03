@@ -23,3 +23,4 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=3 \
   CMD node -e "require('http').get('http://localhost:'+(process.env.PORT||3001)+'/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
 
 CMD ["node", "dist/index.js"]
+# rebuilt Wed Jun  3 13:56:23 IST 2026
