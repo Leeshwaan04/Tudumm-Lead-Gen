@@ -1,7 +1,7 @@
-# Install Playwright + Chromium on node:20-slim (debian, Playwright-compatible).
+# Install Playwright + Chromium on node:20-slim (debian, glibc-based).
 FROM node:20-slim
 
-# Chromium system dependencies on Debian/Ubuntu
+# Chromium system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     fonts-liberation \
@@ -37,23 +37,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
-# Playwright reads this to find pre-installed browsers
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 WORKDIR /app
 
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+# Use --no-frozen-lockfile to avoid platform binary conflicts between Alpine (dev) and Debian (prod)
+RUN pnpm install --no-frozen-lockfile
 
-# Download Chromium at build time into /ms-playwright
+# Download Chromium for this exact playwright version into /ms-playwright
 RUN PLAYWRIGHT_BROWSERS_PATH=/ms-playwright npx playwright install chromium
 
 COPY tsconfig.json ./
 COPY src ./src
 RUN pnpm run build
-
-# Railway uses healthcheckPath + healthcheckTimeout from railway.toml.
-# No Dockerfile HEALTHCHECK needed — it conflicts when PORT is unknown at build time.
 
 CMD ["node", "dist/index.js"]
