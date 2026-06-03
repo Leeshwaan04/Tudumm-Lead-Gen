@@ -47,7 +47,8 @@ async function realScrapeRun(
 
   const extractScript = typeof (input as any)?.extractScript === 'string' ? (input as any).extractScript : undefined
 
-  const res = await fetch(`${BROWSER_SERVICE_URL}/browser/scrape`, {
+  const scrapeEndpoint = `${BROWSER_SERVICE_URL}/browser/scrape`
+  const res = await fetch(scrapeEndpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url, waitFor: 'domcontentloaded', extractScript }),
@@ -55,7 +56,7 @@ async function realScrapeRun(
   })
   if (!res.ok) {
     const body = await res.text().catch(() => '')
-    throw new Error(`browser-service /scrape failed: ${res.status} ${body.slice(0, 200)}`)
+    throw new Error(`POST ${scrapeEndpoint} -> ${res.status} ${body.slice(0, 120)}`)
   }
   const result: any = await res.json()
   if (result.blocked) await addLog(runId, 'WARN', 'Target returned a block/challenge page')
