@@ -7,7 +7,7 @@ import logging
 logger = logging.getLogger("groq-client")
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-MODEL = "llama-3.1-70b-versatile"
+MODEL = "llama-3.3-70b-versatile"
 
 SYSTEM_PROMPT = (
     "You are a professional B2B sales and marketing assistant for the Tudumm platform. "
