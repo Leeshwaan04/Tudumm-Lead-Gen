@@ -122,8 +122,7 @@ router.post('/screenshot', async (req: Request, res: Response) => {
  * Body: { url, waitFor?, proxyUrl?, cookies?, extractScript? }
  */
 router.post('/scrape', async (req: Request, res: Response) => {
-  const { url, waitFor = 'domcontentloaded', proxyUrl, cookies, extractScript, screenshot } =
-    req.body ?? {};
+  const { url, waitFor = 'domcontentloaded', proxyUrl, cookies } = req.body ?? {};
 
   if (!url) {
     res.status(400).json({ error: 'url is required' });
@@ -137,32 +136,6 @@ router.post('/scrape', async (req: Request, res: Response) => {
       waitFor,
     });
 
-    let extracted: unknown = null;
-    if (extractScript && !result.blocked) {
-      const session = pool.getSession(
-        pool
-          .getAllSessions()
-          .find(s => s.status === 'idle')?.id ?? ''
-      );
-      if (session) {
-        try {
-          extracted = await session.page.evaluate(extractScript);
-        } catch (evalErr) {
-          logger.warn({ evalErr }, 'extractScript evaluation failed');
-        }
-      }
-    }
-
-    // Get a screenshot if requested
-    let screenshotBase64: string | undefined;
-    if (screenshot) {
-      const activeSessions = pool.getAllSessions().filter(s => s.status === 'idle');
-      if (activeSessions.length > 0) {
-        const buf = await activeSessions[0].page.screenshot({ type: 'png' }).catch(() => null);
-        screenshotBase64 = buf?.toString('base64');
-      }
-    }
-
     // Strip tags for plain text
     const text = result.html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 
@@ -170,11 +143,11 @@ router.post('/scrape', async (req: Request, res: Response) => {
       url: result.url,
       html: result.html,
       text,
-      screenshot: screenshotBase64,
-      extracted,
+      extracted: result.data ?? null, // structured data points (emails, phones, JSON-LD, OG, etc.)
       status: result.status,
       attempts: result.attempts,
       blocked: result.blocked,
+      blockReason: result.blockReason,
       proxyUsed: result.proxyUsed,
     });
   } catch (err) {

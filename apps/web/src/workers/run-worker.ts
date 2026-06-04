@@ -3,6 +3,7 @@ import { prisma } from '../lib/db'
 import type { RunJobData } from '../lib/queue'
 import { redisConnection as connection } from '../lib/redis-connection'
 import { uploadJSON } from '../lib/storage'
+import { decryptCookie } from '../lib/cookie-cipher'
 import crypto from 'crypto'
 
 const JOB_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
@@ -37,21 +38,45 @@ function extractUrl(input: Record<string, unknown> | undefined): string | null {
  * Used when the actor input contains a URL. Throws on hard failure so the
  * caller can fall back to simulation.
  */
+export class ScrapeBlockedError extends Error {}
+
+// Fetch + decrypt the workspace's active LinkedIn cookie for authenticated scraping.
+async function linkedInCookies(workspaceId: string): Promise<any[] | undefined> {
+  try {
+    const session = await prisma.linkedInSession.findFirst({
+      where: { workspaceId, status: 'ACTIVE' }, orderBy: { lastUsedAt: 'asc' },
+    })
+    if (!session) return undefined
+    const raw = decryptCookie(session.sessionCookie)
+    // Stored value may be a raw li_at token or a JSON cookie array.
+    if (raw.startsWith('[')) return JSON.parse(raw)
+    return [{ name: 'li_at', value: raw, domain: '.linkedin.com', path: '/' }]
+  } catch {
+    return undefined
+  }
+}
+
 async function realScrapeRun(
   data: RunJobData,
   url: string,
 ): Promise<{ items: Record<string, unknown>[]; creditsCost: number }> {
-  const { runId, input } = data
+  const { runId, workspaceId } = data
   await prisma.run.update({ where: { id: runId }, data: { status: 'RUNNING', startedAt: new Date() } })
   await addLog(runId, 'INFO', `Actor started — scraping ${url}`)
 
-  const extractScript = typeof (input as any)?.extractScript === 'string' ? (input as any).extractScript : undefined
+  // Authenticated scraping for social networks that block anonymous requests.
+  let cookies: any[] | undefined
+  if (/linkedin\.com/i.test(url)) {
+    cookies = await linkedInCookies(workspaceId)
+    if (cookies) await addLog(runId, 'INFO', 'Using connected LinkedIn session for authenticated scrape')
+    else await addLog(runId, 'WARN', 'No connected LinkedIn session — LinkedIn will likely block this request')
+  }
 
   const scrapeEndpoint = `${BROWSER_SERVICE_URL}/browser/scrape`
   const res = await fetch(scrapeEndpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url, waitFor: 'domcontentloaded', extractScript }),
+    body: JSON.stringify({ url, waitFor: 'domcontentloaded', cookies }),
     signal: AbortSignal.timeout(120000),
   })
   if (!res.ok) {
@@ -59,27 +84,25 @@ async function realScrapeRun(
     throw new Error(`POST ${scrapeEndpoint} -> ${res.status} ${body.slice(0, 120)}`)
   }
   const result: any = await res.json()
-  if (result.blocked) await addLog(runId, 'WARN', 'Target returned a block/challenge page')
+
+  // Honest block handling — do NOT fabricate success on a block.
+  if (result.blocked) {
+    const reason = result.blockReason || `status ${result.status}`
+    await addLog(runId, 'ERROR', `Blocked by target: ${reason}. ${/linkedin/i.test(url) ? 'Connect a LinkedIn session in Settings → LinkedIn.' : 'Try a proxy or different target.'}`)
+    throw new ScrapeBlockedError(`Target blocked the request (${reason})`)
+  }
   await addLog(runId, 'INFO', `Fetched ${url} (status ${result.status ?? '?'}, ${result.attempts ?? 1} attempt(s))`)
 
-  // Normalise extracted output into an array of item objects.
+  // result.extracted is now structured data (emails, phones, social, JSON-LD, OG…)
+  const d = result.extracted
   let items: Record<string, unknown>[]
-  if (Array.isArray(result.extracted)) {
-    items = result.extracted
-  } else if (result.extracted && typeof result.extracted === 'object') {
-    items = [result.extracted]
-  } else {
-    const text = typeof result.text === 'string' ? result.text : ''
-    items = [{
-      url: result.url ?? url,
-      title: (text.match(/^(.{0,120})/)?.[1] ?? '').trim(),
-      text: text.slice(0, 5000),
-      httpStatus: result.status ?? null,
-      scrapedAt: new Date().toISOString(),
-    }]
-  }
+  if (Array.isArray(d)) items = d
+  else if (d && typeof d === 'object') items = [d]
+  else items = [{ url: result.url ?? url, httpStatus: result.status ?? null, scrapedAt: new Date().toISOString() }]
 
-  await addLog(runId, 'INFO', `Extracted ${items.length} item(s)`)
+  const dp = items[0] ?? {}
+  const counts = `${(dp.emails as any[])?.length ?? 0} email(s), ${(dp.phones as any[])?.length ?? 0} phone(s), ${Array.isArray(dp.jsonLd) ? dp.jsonLd.length : 0} structured block(s)`
+  await addLog(runId, 'INFO', `Extracted ${items.length} record(s) — ${counts}`)
   return { items, creditsCost: Math.max(1, Math.ceil(items.length * 0.05)) }
 }
 
@@ -229,6 +252,16 @@ const worker = new Worker<RunJobData>(
         try {
           ({ items, creditsCost } = await realScrapeRun(job.data, url))
         } catch (scrapeErr) {
+          // A block is a real, honest failure — do NOT fabricate sample data.
+          if (scrapeErr instanceof ScrapeBlockedError) {
+            clearTimeout(timeoutHandle)
+            await prisma.run.update({
+              where: { id: runId },
+              data: { status: 'FAILED', finishedAt: new Date(), errorMessage: String(scrapeErr.message) },
+            })
+            activeRunIds.delete(runId)
+            throw scrapeErr
+          }
           await addLog(runId, 'ERROR', `Real scrape failed (${String(scrapeErr).slice(0, 200)}) — falling back to sample data`)
           ;({ items, creditsCost } = await simulateActorRun(job.data))
         }
