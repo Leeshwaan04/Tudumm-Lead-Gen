@@ -226,7 +226,11 @@ function PlatformSection({ platform }: { platform: Platform }) {
 
   const { data: sessions = [], isLoading } = useQuery<SocialSession[]>({
     queryKey: ['social-sessions', platform],
-    queryFn: () => fetch(`/api/social/sessions?platform=${platform}`).then(r => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`/api/social/sessions?platform=${platform}`)
+      const d = await r.json().catch(() => [])
+      return Array.isArray(d) ? d : []
+    },
     refetchInterval: 30000,
   })
 
