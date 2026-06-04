@@ -3,6 +3,7 @@ import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
 import { runQueue } from '@/lib/queue'
 import { requireCredits, refundCredits, InsufficientCreditsError } from '@/lib/plan-gate'
+import { guardExpensive, getClientIp } from '@/lib/rate-limit'
 
 // Slug validation: alphanumerics, dashes, underscores only. No path traversal, no shell metachars.
 const ACTOR_SLUG_PATTERN = /^[a-z0-9][a-z0-9_-]{2,63}$/i
@@ -11,6 +12,10 @@ export async function POST(req: Request) {
   const session = await auth()
   const workspaceId = (session as any)?.workspaceId
   if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Cost/abuse guard: scraping is the most expensive op (compute + proxy).
+  const limited = guardExpensive('run', getClientIp(req), workspaceId, { perMinute: 20, perDay: 500 })
+  if (limited) return NextResponse.json({ error: limited }, { status: 429 })
 
   const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } })
   if (!workspace) return NextResponse.json({ error: 'Workspace not found' }, { status: 404 })

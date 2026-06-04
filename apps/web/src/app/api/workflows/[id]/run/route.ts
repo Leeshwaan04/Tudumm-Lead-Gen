@@ -2,12 +2,17 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
 import { runWorkflow } from '@/lib/workflow-runner'
+import { guardExpensive, getClientIp } from '@/lib/rate-limit'
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await auth()
     const workspaceId = (session as any)?.workspaceId
     if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    // A workflow can fan out into many scrapes/enriches — guard it too.
+    const limited = guardExpensive('workflow', getClientIp(req), workspaceId, { perMinute: 10, perDay: 200 })
+    if (limited) return NextResponse.json({ error: limited }, { status: 429 })
 
     const { id } = await params
     const workflow = await prisma.workflowDefinition.findFirst({ where: { id, workspaceId } })

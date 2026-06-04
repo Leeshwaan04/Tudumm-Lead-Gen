@@ -42,6 +42,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!user || !user.passwordHash) return null
         const valid = await bcrypt.compare(credentials.password as string, user.passwordHash)
         if (!valid) return null
+        // Block unverified accounts (abuse gate). Existing users are grandfathered;
+        // only new signups that haven't clicked the verification link are blocked.
+        if (user.emailVerified === false) {
+          throw new Error('EMAIL_NOT_VERIFIED')
+        }
         return {
           id: user.id,
           email: user.email,

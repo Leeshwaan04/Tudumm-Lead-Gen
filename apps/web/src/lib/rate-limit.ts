@@ -47,3 +47,25 @@ export function getClientIp(req: Request): string {
   if (xff) return (xff.split(',')[0] ?? '').trim()
   return req.headers.get('x-real-ip') ?? 'unknown'
 }
+
+/**
+ * Guard an expensive operation (scrape / enrich / run) by BOTH a short-term
+ * burst limit per IP and a daily cap per workspace. Returns an error string if
+ * blocked, or null if allowed. Cost/abuse protection for unmetered endpoints.
+ */
+export function guardExpensive(
+  op: string,
+  ip: string,
+  workspaceId: string,
+  opts: { perMinute?: number; perDay?: number } = {},
+): string | null {
+  const perMinute = opts.perMinute ?? 20
+  const perDay = opts.perDay ?? 500
+  if (!rateLimit(`${op}:ip:${ip}`, perMinute, 60_000)) {
+    return `Rate limit: max ${perMinute} ${op} requests/minute. Slow down and retry shortly.`
+  }
+  if (!rateLimit(`${op}:ws:${workspaceId}`, perDay, 24 * 60 * 60_000)) {
+    return `Daily limit reached: max ${perDay} ${op} runs/day for this workspace.`
+  }
+  return null
+}

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
 import { requireCredits, refundCredits, InsufficientCreditsError } from '@/lib/plan-gate'
+import { guardExpensive, getClientIp } from '@/lib/rate-limit'
 
 function scoreFromTitle(title?: string | null): number {
   if (!title) return Math.floor(Math.random() * 15) + 60 // 60–74
@@ -33,6 +34,10 @@ export async function POST(req: Request) {
   const session = await auth()
   const workspaceId = (session as any)?.workspaceId
   if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // Cost guard: each lead = a Groq call. Cap bursts + daily volume.
+  const limited = guardExpensive('enrich', getClientIp(req), workspaceId, { perMinute: 30, perDay: 2000 })
+  if (limited) return NextResponse.json({ error: limited }, { status: 429 })
 
   const { leadIds } = await req.json()
   if (!Array.isArray(leadIds) || leadIds.length === 0) {
