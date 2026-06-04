@@ -271,8 +271,14 @@ export async function runWorkflow(workflowId: string, workspaceId: string, execu
     const workflow = await prisma.workflowDefinition.findFirst({ where: { id: workflowId, workspaceId } })
     if (!workflow) throw new Error('Workflow not found')
 
-    const nodes: any[] = JSON.parse((workflow.nodes as string) || '[]')
-    const edges: any[] = JSON.parse((workflow.edges as string) || '[]')
+    // Defensive parse: heals legacy double-encoded rows (parse yields a string).
+    const parseGraph = (raw: unknown): any[] => {
+      let v: any = JSON.parse((raw as string) || '[]')
+      if (typeof v === 'string') v = JSON.parse(v)
+      return Array.isArray(v) ? v : []
+    }
+    const nodes: any[] = parseGraph(workflow.nodes)
+    const edges: any[] = parseGraph(workflow.edges)
 
     const inDegree: Record<string, number> = {}
     const children: Record<string, string[]> = {}

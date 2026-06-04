@@ -30,13 +30,17 @@ export async function POST(req: Request) {
     if (!workspaceId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { name, description, nodes, edges } = await req.json()
+    // Clients (the builder) send nodes/edges already JSON-stringified; raw
+    // callers may send arrays. Store a single-encoded string either way —
+    // double-encoding breaks the runner (JSON.parse yields a string, not array).
+    const toJson = (v: unknown) => (typeof v === 'string' ? v : JSON.stringify(v ?? []))
     const workflow = await prisma.workflowDefinition.create({
       data: {
         workspaceId,
         name,
         description,
-        nodes: JSON.stringify(nodes ?? []),
-        edges: JSON.stringify(edges ?? []),
+        nodes: toJson(nodes),
+        edges: toJson(edges),
       },
     })
 

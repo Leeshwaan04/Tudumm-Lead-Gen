@@ -13,7 +13,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const workflow = await prisma.workflowDefinition.findFirst({ where: { id, workspaceId } })
     if (!workflow) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-    const nodes: any[] = JSON.parse((workflow.nodes as string) || '[]')
+    // Defensive parse: heals legacy double-encoded rows (parse yields a string).
+    let nodes: any = JSON.parse((workflow.nodes as string) || '[]')
+    if (typeof nodes === 'string') nodes = JSON.parse(nodes)
+    if (!Array.isArray(nodes)) nodes = []
     const nodeStates: Record<string, any> = {}
     for (const node of nodes) {
       nodeStates[node.id] = { status: 'PENDING', type: node.type, label: node.data?.label }
