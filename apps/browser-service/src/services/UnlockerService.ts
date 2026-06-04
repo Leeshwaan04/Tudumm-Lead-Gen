@@ -78,6 +78,77 @@ function pageExtractor(): Record<string, unknown> {
 
   const metaDesc = document.querySelector('meta[name="description"]')?.getAttribute('content') ?? null;
 
+  // ── Per-site structured extraction ──────────────────────────────────────────
+  // Each branch returns the fields that site's phantom actually promises.
+  const host = location.hostname.replace(/^www\./, '');
+  const path = location.pathname.split('/').filter(Boolean);
+  const q = (sel: string) => document.querySelector(sel)?.textContent?.trim() || null;
+  let site: Record<string, unknown> | null = null;
+  let records: Record<string, unknown>[] = [];
+
+  try {
+    if (host.includes('github.com') && path.length === 1) {
+      site = {
+        type: 'github_profile',
+        username: path[0],
+        name: q('.vcard-fullname') || q('[itemprop="name"]'),
+        bio: q('.user-profile-bio') || q('[data-bio-text]'),
+        company: q('[itemprop="worksFor"]'),
+        location: q('[itemprop="homeLocation"]'),
+        followers: q('a[href$="tab=followers"] .text-bold') || q('a[href*="followers"] span.text-bold'),
+        following: q('a[href$="tab=following"] .text-bold') || q('a[href*="following"] span.text-bold'),
+        repos: q('a[href$="tab=repositories"] .Counter') || q('[data-tab-item="repositories"] .Counter'),
+        profileUrl: location.href,
+      };
+    } else if (host.includes('linkedin.com')) {
+      let person: any = null;
+      for (const block of jsonLd) {
+        const arr = Array.isArray((block as any)?.['@graph']) ? (block as any)['@graph'] : [block];
+        for (const o of arr) {
+          if (o && (o['@type'] === 'Person')) person = o;
+          if (o && o['@type'] === 'ProfilePage' && o.mainEntity) person = o.mainEntity;
+        }
+      }
+      site = {
+        type: 'linkedin_profile',
+        name: person?.name || (og.title || '').replace(/ \| LinkedIn.*$/, '').trim() || q('h1'),
+        headline: person?.jobTitle || person?.description || og.description || null,
+        location: person?.address?.addressLocality || null,
+        company: (Array.isArray(person?.worksFor) ? person.worksFor[0]?.name : person?.worksFor?.name) || null,
+        profileUrl: location.href,
+      };
+    } else if (host.includes('instagram.com') && path.length >= 1) {
+      const d = og.description || metaDesc || '';
+      const m = d.match(/([\d,.]+[KMB]?)\s+Followers,\s+([\d,.]+[KMB]?)\s+Following,\s+([\d,.]+[KMB]?)\s+Posts/i);
+      site = {
+        type: 'instagram_profile',
+        username: path[0],
+        fullName: (og.title || '').replace(/\s*\(@.*$/, '').replace(/\s+on Instagram.*$/, '').trim(),
+        followers: m?.[1] || null, following: m?.[2] || null, posts: m?.[3] || null,
+        bio: d, profileUrl: location.href,
+      };
+    } else if (host.includes('google.') && location.pathname.includes('/maps')) {
+      const seen = new Set<string>();
+      for (const a of Array.from(document.querySelectorAll('a[href*="/maps/place/"]'))) {
+        const name = a.getAttribute('aria-label');
+        if (!name || seen.has(name)) continue;
+        seen.add(name);
+        const card = (a.closest('[role="article"]') as HTMLElement) || a.parentElement;
+        const ct = card?.textContent || '';
+        records.push({
+          type: 'google_maps_place',
+          name,
+          phone: (ct.match(/\+?\d[\d\s().-]{7,}\d/) || [])[0] || null,
+          rating: (ct.match(/([0-5][.,]\d)/) || [])[1] || null,
+          mapsUrl: (a as HTMLAnchorElement).href,
+        });
+        if (records.length >= 40) break;
+      }
+    } else if (host.includes('producthunt.com')) {
+      site = { type: 'product_hunt', title: og.title || document.title, description: og.description || metaDesc, url: location.href };
+    }
+  } catch { /* per-site extraction is best-effort */ }
+
   return {
     url: location.href,
     title: document.title ?? '',
@@ -90,6 +161,8 @@ function pageExtractor(): Record<string, unknown> {
     social,
     openGraph: og,
     jsonLd,
+    site,
+    records,
     textSnippet: text.replace(/\s+/g, ' ').trim().slice(0, 4000),
   };
 }

@@ -114,11 +114,15 @@ async function realScrapeRun(
     await addLog(runId, 'INFO', 'Google Maps scrape — using residential proxy if configured')
   }
 
+  // JS-heavy sites need full render (networkidle) or the page is an empty shell.
+  const dynamic = /linkedin\.com|instagram\.com|(twitter|x)\.com|google\.[^/]+\/maps|producthunt\.com/i.test(url)
+  const waitFor = dynamic ? 'networkidle' : 'domcontentloaded'
+
   const scrapeEndpoint = `${BROWSER_SERVICE_URL}/browser/scrape`
   const res = await fetch(scrapeEndpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url, waitFor: 'domcontentloaded', cookies }),
+    body: JSON.stringify({ url, waitFor, cookies }),
     signal: AbortSignal.timeout(120000),
   })
   if (!res.ok) {
@@ -135,16 +139,24 @@ async function realScrapeRun(
   }
   await addLog(runId, 'INFO', `Fetched ${url} (status ${result.status ?? '?'}, ${result.attempts ?? 1} attempt(s))`)
 
-  // result.extracted is now structured data (emails, phones, social, JSON-LD, OG…)
-  const d = result.extracted
+  // Prefer per-site structured output: list records > single site object > generic.
+  const d = result.extracted ?? {}
   let items: Record<string, unknown>[]
-  if (Array.isArray(d)) items = d
-  else if (d && typeof d === 'object') items = [d]
-  else items = [{ url: result.url ?? url, httpStatus: result.status ?? null, scrapedAt: new Date().toISOString() }]
+  if (Array.isArray(d.records) && d.records.length) {
+    items = d.records
+  } else if (d.site && typeof d.site === 'object') {
+    items = [{ ...d.site, emails: d.emails, phones: d.phones, social: d.social }]
+  } else if (Array.isArray(d)) {
+    items = d
+  } else if (d && typeof d === 'object') {
+    items = [d]
+  } else {
+    items = [{ url: result.url ?? url, httpStatus: result.status ?? null, scrapedAt: new Date().toISOString() }]
+  }
 
-  const dp = items[0] ?? {}
-  const counts = `${(dp.emails as any[])?.length ?? 0} email(s), ${(dp.phones as any[])?.length ?? 0} phone(s), ${Array.isArray(dp.jsonLd) ? dp.jsonLd.length : 0} structured block(s)`
-  await addLog(runId, 'INFO', `Extracted ${items.length} record(s) — ${counts}`)
+  const dp: any = items[0] ?? {}
+  const kind = dp.type ? `${dp.type}` : `${(dp.emails as any[])?.length ?? 0} email(s), ${(dp.phones as any[])?.length ?? 0} phone(s)`
+  await addLog(runId, 'INFO', `Extracted ${items.length} record(s) — ${kind}`)
   return { items, creditsCost: Math.max(1, Math.ceil(items.length * 0.05)) }
 }
 
