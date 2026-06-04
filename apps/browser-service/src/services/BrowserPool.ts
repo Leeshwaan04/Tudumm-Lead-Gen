@@ -9,6 +9,27 @@ const logger = pino({ name: 'browser-pool' });
 // Add stealth plugin
 chromium.use(StealthPlugin());
 
+/**
+ * Parse a proxy URL into Playwright's proxy shape. Residential providers use
+ * `http://user:pass@host:port` — Playwright needs username/password as SEPARATE
+ * fields (embedding them in `server` does NOT authenticate). This makes
+ * PROXY_LIST plug-and-play for IPRoyal/Smartproxy/Oxylabs/etc.
+ */
+function parseProxy(raw: string): { server: string; username?: string; password?: string } | undefined {
+  if (!raw) return undefined;
+  try {
+    const u = new URL(raw.includes('://') ? raw : `http://${raw}`);
+    const server = `${u.protocol}//${u.host}`; // host includes port, no creds
+    const out: { server: string; username?: string; password?: string } = { server };
+    if (u.username) out.username = decodeURIComponent(u.username);
+    if (u.password) out.password = decodeURIComponent(u.password);
+    return out;
+  } catch {
+    // Fall back to passing it through as a bare server string.
+    return { server: raw };
+  }
+}
+
 export interface BrowserSession {
   id: string;
   browser: Browser;
@@ -65,7 +86,7 @@ export class BrowserPool {
         '--disable-setuid-sandbox',
         '--disable-blink-features=AutomationControlled',
       ],
-      proxy: options.proxyUrl ? { server: options.proxyUrl } : undefined,
+      proxy: options.proxyUrl ? parseProxy(options.proxyUrl) : undefined,
     });
 
     const wsEndpoint = browserServer.wsEndpoint();

@@ -37,9 +37,9 @@ const features = [
   },
   {
     icon: Globe2,
-    title: "Enterprise Proxy Network",
+    title: "Proxy Support",
     description:
-      "72M+ residential IPs across 195 countries. Rotating, sticky, mobile, and datacenter proxies with 99.9% uptime SLA.",
+      "Bring your own residential or datacenter proxies with built-in rotation, sticky sessions, and geo-routing for reliable scraping.",
     color: "text-emerald-400",
     bg: "bg-emerald-500/10 border-emerald-500/20",
   },
@@ -53,9 +53,9 @@ const features = [
   },
   {
     icon: Zap,
-    title: "27K+ Actor Store",
+    title: "Actor Store",
     description:
-      "The world's largest marketplace of web automation actors. Community-built, professionally reviewed, instantly deployable.",
+      "A growing library of ready-to-run actors — LinkedIn, Google Maps, Instagram, GitHub, email finder and more. One click to launch.",
     color: "text-amber-400",
     bg: "bg-amber-500/10 border-amber-500/20",
   },
@@ -71,36 +71,37 @@ const features = [
 
 
 const stats = [
-  { label: "Actors available", value: "27,000+" },
-  { label: "Proxy IPs", value: "72M+" },
-  { label: "Monthly runs", value: "180M+" },
-  { label: "Data points extracted", value: "2.4B+" },
+  { label: "Scrape → enrich → outreach", value: "One pipeline" },
+  { label: "AI lead scoring", value: "Built in" },
+  { label: "Email finder + verifier", value: "Included" },
+  { label: "Free to start", value: "$0" },
 ];
 
+// Honest capability highlights (not fabricated testimonials).
 const testimonials = [
   {
     quote:
-      "Tudumm replaced three separate tools — PhantomBuster, BrightData, and a custom scraper. Our lead volume tripled in 60 days.",
-    author: "Sarah Chen",
-    role: "Head of Growth",
-    company: "Accel-backed SaaS",
-    avatar: "SC",
+      "Scrape LinkedIn, Google Maps, and the open web, then auto-enrich and score every lead against your ICP — in one visual workflow.",
+    author: "Lead generation",
+    role: "Scrape → Enrich → Qualify",
+    company: "",
+    avatar: "1",
   },
   {
     quote:
-      "The workflow builder is genuinely magical. We built a 12-step LinkedIn outreach pipeline in an afternoon. Zero engineering time.",
-    author: "Marcus Reid",
-    role: "Revenue Operations",
-    company: "Series B Fintech",
-    avatar: "MR",
+      "Find and verify business emails, enroll qualified leads into automated email sequences, and stop when they reply.",
+    author: "Outreach",
+    role: "Find emails → Sequence → Reply detection",
+    company: "",
+    avatar: "2",
   },
   {
     quote:
-      "27K actors is not a typo. Whatever data source we need, there's already a battle-tested actor for it. Game changer.",
-    author: "Priya Sharma",
-    role: "Data Engineer",
-    company: "Enterprise SaaS",
-    avatar: "PS",
+      "Build a pipeline once with the drag-and-drop builder, run it on a schedule, and export clean datasets or push to your tools via webhooks.",
+    author: "Automation",
+    role: "Build once → Run on schedule",
+    company: "",
+    avatar: "3",
   },
 ];
 
@@ -145,7 +146,7 @@ export default function LandingPage() {
         <div className="relative mx-auto max-w-5xl text-center">
           <Badge variant="purple" className="mb-6 text-sm px-4 py-1.5 rounded-full border border-violet-500/40">
             <Star className="h-3.5 w-3.5 mr-1.5 text-amber-400 fill-amber-400" />
-            Rated #1 web automation platform — Product Hunt
+            No-code lead generation & web automation
           </Badge>
 
           <h1 className="text-5xl sm:text-6xl md:text-7xl font-extrabold leading-[1.08] tracking-tight mb-6">
@@ -229,32 +230,22 @@ export default function LandingPage() {
       <section className="py-24 px-6 border-y border-white/5 bg-white/[0.02]">
         <div className="mx-auto max-w-7xl">
           <div className="text-center mb-16">
-            <div className="flex items-center justify-center gap-2 mb-4">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Star key={i} className="h-5 w-5 text-amber-400 fill-amber-400" />
-              ))}
-            </div>
             <h2 className="text-3xl font-bold text-white">
-              Loved by 12,000+ growth teams
+              What you can build with Tudumm
             </h2>
           </div>
           <div className="grid md:grid-cols-3 gap-6">
             {testimonials.map((t) => (
               <Card key={t.author} className="border border-white/10 bg-white/5">
                 <CardContent className="p-6">
-                  <div className="flex items-center gap-1 mb-4">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Star key={i} className="h-3.5 w-3.5 text-amber-400 fill-amber-400" />
-                    ))}
-                  </div>
-                  <p className="text-slate-300 text-sm leading-relaxed mb-4">&ldquo;{t.quote}&rdquo;</p>
+                  <p className="text-slate-300 text-sm leading-relaxed mb-4">{t.quote}</p>
                   <div className="flex items-center gap-3">
                     <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-violet-600 to-indigo-600 text-xs font-bold">
                       {t.avatar}
                     </div>
                     <div>
                       <div className="text-sm font-medium text-white">{t.author}</div>
-                      <div className="text-xs text-slate-500">{t.role} · {t.company}</div>
+                      <div className="text-xs text-slate-500">{t.role}</div>
                     </div>
                   </div>
                 </CardContent>
@@ -273,7 +264,7 @@ export default function LandingPage() {
               Ready to automate everything?
             </h2>
             <p className="text-slate-400 text-lg mb-8">
-              Join 12,000+ companies extracting intelligence from the web at scale.
+              Scrape, enrich, and reach your leads — all in one platform. Free to start.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link href="/signup">
@@ -300,10 +291,8 @@ export default function LandingPage() {
             <span className="font-bold text-white">Tudumm</span>
           </div>
           <div className="flex items-center gap-6 text-sm text-slate-500">
-            <Link href="#" className="hover:text-white transition-colors">Privacy</Link>
-            <Link href="#" className="hover:text-white transition-colors">Terms</Link>
-            <Link href="#" className="hover:text-white transition-colors">Status</Link>
-            <Link href="#" className="hover:text-white transition-colors">Docs</Link>
+            <Link href="/privacy" className="hover:text-white transition-colors">Privacy</Link>
+            <Link href="/terms" className="hover:text-white transition-colors">Terms</Link>
           </div>
           <div className="text-sm text-slate-600">© 2026 Tudumm, Inc.</div>
         </div>
