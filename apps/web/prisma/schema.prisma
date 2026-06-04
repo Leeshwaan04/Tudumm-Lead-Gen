@@ -36,6 +36,7 @@ model Workspace {
   execHoursLimit Float    @default(10)
   slots          Int      @default(3)
   proxyGbUsed    Float    @default(0)
+  proxyUrl       String?  // bring-your-own residential proxy (encrypted; user:pass@host:port)
   aiCredits      Int      @default(0)
   emailCredits   Int      @default(0)
   createdAt      DateTime @default(now())

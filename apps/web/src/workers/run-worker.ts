@@ -110,8 +110,20 @@ async function realScrapeRun(
     cookies = await instagramCookies(workspaceId)
     if (cookies) await addLog(runId, 'INFO', 'Using connected Instagram session for authenticated scrape')
     else await addLog(runId, 'WARN', 'No connected Instagram session — Instagram will likely block this request')
-  } else if (/google\.com\/maps/i.test(url)) {
-    await addLog(runId, 'INFO', 'Google Maps scrape — using residential proxy if configured')
+  }
+
+  // Bring-your-own proxy: if the workspace configured a residential proxy, use
+  // it (overrides any global PROXY_LIST). Decrypted just-in-time.
+  let proxyUrl: string | undefined
+  try {
+    const ws = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { proxyUrl: true } })
+    if (ws?.proxyUrl) {
+      proxyUrl = decryptCookie(ws.proxyUrl)
+      await addLog(runId, 'INFO', 'Routing through your configured residential proxy')
+    }
+  } catch { /* fall back to global PROXY_LIST in browser-service */ }
+  if (!proxyUrl && /google\.[^/]+\/maps|linkedin\.com|instagram\.com|(twitter|x)\.com/i.test(url)) {
+    await addLog(runId, 'WARN', 'No proxy configured — this site often blocks datacenter IPs. Add a proxy in Settings → Proxy.')
   }
 
   // JS-heavy sites need render time. Maps/Twitter never reach networkidle
@@ -124,7 +136,7 @@ async function realScrapeRun(
   const res = await fetch(scrapeEndpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url, waitFor, cookies }),
+    body: JSON.stringify({ url, waitFor, cookies, proxyUrl }),
     signal: AbortSignal.timeout(120000),
   })
   if (!res.ok) {

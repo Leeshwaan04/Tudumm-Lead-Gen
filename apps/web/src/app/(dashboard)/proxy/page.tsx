@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -175,6 +175,72 @@ function AddProxyModal({ onClose, onAdd }: { onClose: () => void; onAdd: (data: 
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+// Bring-your-own residential proxy: routes the workspace's scrapes through the
+// user's own proxy (no Tudumm proxy cost). Unlocks Maps/LinkedIn/Twitter.
+function ByoProxyCard({ onToast }: { onToast: (m: string, t?: 'success' | 'error') => void }) {
+  const [value, setValue] = useState('');
+  const [hasProxy, setHasProxy] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/workspace').then((r) => r.json()).then((d) => setHasProxy(!!d.hasProxy)).catch(() => {});
+  }, []);
+
+  async function save(clear = false) {
+    if (!clear && !value.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch('/api/workspace', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proxyUrl: clear ? '' : value.trim() }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({})))?.error || 'Failed to save');
+      setHasProxy(!clear);
+      setValue('');
+      onToast(clear ? 'Proxy removed.' : 'Proxy saved — your scrapes now route through it.', 'success');
+    } catch (e: any) {
+      onToast(e.message || 'Failed', 'error');
+    }
+    setSaving(false);
+  }
+
+  return (
+    <div className="rounded-xl border border-violet-500/20 bg-violet-500/[0.03] p-5 space-y-3">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h3 className="font-semibold text-white">Use your own residential proxy</h3>
+          <p className="text-sm text-white/50 mt-0.5">
+            Paste a residential proxy (e.g. IPRoyal, Smartproxy). Your scrapes route through it —
+            unlocks Google Maps, LinkedIn, Instagram & Twitter. We store it encrypted.
+          </p>
+        </div>
+        {hasProxy && <span className="shrink-0 text-xs px-2 py-1 rounded-full bg-green-400/10 text-green-400">Active</span>}
+      </div>
+      <div className="flex flex-col sm:flex-row gap-2">
+        <input
+          type="password"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder={hasProxy ? '•••••• (configured — paste to replace)' : 'http://user:pass@geo.iproyal.com:12321'}
+          className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm placeholder:text-white/30 focus:outline-none focus:border-violet-500/50"
+        />
+        <button
+          onClick={() => save(false)} disabled={saving || !value.trim()}
+          className="px-4 py-2 bg-violet-600 hover:bg-violet-500 rounded-lg text-sm font-medium disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        {hasProxy && (
+          <button onClick={() => save(true)} disabled={saving}
+            className="px-4 py-2 border border-white/10 hover:bg-white/5 rounded-lg text-sm disabled:opacity-50">
+            Remove
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function ProxyPage() {
   const qc = useQueryClient();
   const [showAdd, setShowAdd] = useState(false);
@@ -291,6 +357,8 @@ export default function ProxyPage() {
           </Button>
         </div>
       </div>
+
+      <ByoProxyCard onToast={(m, t) => showToast(m, t ?? 'success')} />
 
       {/* Type overview cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
