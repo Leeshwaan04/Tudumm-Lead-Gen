@@ -271,86 +271,6 @@ async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, u
   return { items: results, creditsCost: 1 }
 }
 
-function generateItems(slug: string, count: number): Record<string, unknown>[] {
-  const items: Record<string, unknown>[] = []
-  for (let i = 0; i < count; i++) {
-    if (slug.includes('linkedin')) {
-      items.push({
-        firstName: `First${i}`,
-        lastName: `Last${i}`,
-        title: `Engineer ${i}`,
-        company: `Company ${i}`,
-        email: `user${i}@company${i}.com`,
-        linkedinUrl: `https://linkedin.com/in/user${i}`,
-      })
-    } else if (slug.includes('google-maps')) {
-      items.push({
-        name: `Business ${i}`,
-        address: `${i} Main St, City, State`,
-        phone: `+1-555-${String(i).padStart(4, '0')}`,
-        rating: (Math.random() * 2 + 3).toFixed(1),
-        website: `https://business${i}.com`,
-      })
-    } else if (slug.includes('twitter')) {
-      items.push({
-        username: `user${i}`,
-        bio: `Bio for user ${i}`,
-        followers: Math.floor(Math.random() * 10000),
-        tweets: Math.floor(Math.random() * 5000),
-      })
-    } else if (slug.includes('github')) {
-      items.push({
-        username: `dev${i}`,
-        email: `dev${i}@github.com`,
-        location: `City ${i}`,
-        repos: Math.floor(Math.random() * 100),
-      })
-    } else if (slug.includes('instagram')) {
-      items.push({
-        username: `insta_user${i}`,
-        bio: `Instagram bio ${i}`,
-        followers: Math.floor(Math.random() * 50000),
-        posts: Math.floor(Math.random() * 1000),
-      })
-    } else {
-      items.push({
-        title: `Result ${i}`,
-        url: `https://example.com/result/${i}`,
-        description: `Description for result ${i}`,
-        scrapedAt: new Date().toISOString(),
-      })
-    }
-  }
-  return items
-}
-
-async function simulateActorRun(data: RunJobData): Promise<{ items: Record<string, unknown>[]; creditsCost: number }> {
-  const { runId, actorSlug } = data
-
-  await prisma.run.update({ where: { id: runId }, data: { status: 'RUNNING', startedAt: new Date() } })
-  await addLog(runId, 'INFO', 'Actor started')
-  await new Promise(r => setTimeout(r, 500))
-
-  await addLog(runId, 'INFO', 'Loading input configuration')
-  await new Promise(r => setTimeout(r, 300))
-
-  await addLog(runId, 'INFO', 'Launching browser instance')
-  await new Promise(r => setTimeout(r, 800))
-
-  const slug = actorSlug ?? 'generic'
-  await addLog(runId, 'INFO', 'Collecting results')
-  await new Promise(r => setTimeout(r, 1000))
-
-  const itemCount = Math.floor(Math.random() * 40) + 10
-  const items = generateItems(slug, itemCount)
-  await addLog(runId, 'INFO', `Generated ${itemCount} sample items (simulated — no URL provided)`)
-
-  const creditsCost = Math.max(1, Math.floor(itemCount * 0.05))
-  await addLog(runId, 'INFO', 'Actor finished successfully')
-
-  return { items, creditsCost }
-}
-
 async function deliverWebhooks(workspaceId: string, payload: Record<string, unknown>) {
   try {
     const webhooks = await prisma.webhook.findMany({
@@ -442,28 +362,33 @@ const worker = new Worker<RunJobData>(
         return { runId, datasetId: datasetE.id }
       }
 
-      // Real scrape when the input carries a URL; otherwise fall back to a
-      // simulated sample run. Either path produces real, downloadable items.
+      // Real scrape only. We NEVER fabricate sample data — an empty/failed scrape
+      // is reported honestly so users can trust every dataset.
       const url = extractUrl(job.data.input)
-      if (url) {
-        try {
-          ({ items, creditsCost } = await realScrapeRun(job.data, url))
-        } catch (scrapeErr) {
-          // A block is a real, honest failure — do NOT fabricate sample data.
-          if (scrapeErr instanceof ScrapeBlockedError) {
-            clearTimeout(timeoutHandle)
-            await prisma.run.update({
-              where: { id: runId },
-              data: { status: 'FAILED', finishedAt: new Date(), errorMessage: String(scrapeErr.message) },
-            })
-            activeRunIds.delete(runId)
-            throw scrapeErr
-          }
-          await addLog(runId, 'ERROR', `Real scrape failed (${String(scrapeErr).slice(0, 200)}) — falling back to sample data`)
-          ;({ items, creditsCost } = await simulateActorRun(job.data))
-        }
-      } else {
-        ({ items, creditsCost } = await simulateActorRun(job.data))
+      if (!url) {
+        clearTimeout(timeoutHandle)
+        await addLog(runId, 'ERROR', 'No target provided. Give this actor a URL (or a search query for Google Maps).')
+        await prisma.run.update({
+          where: { id: runId },
+          data: { status: 'FAILED', finishedAt: new Date(), errorMessage: 'No target URL or query provided' },
+        })
+        activeRunIds.delete(runId)
+        return { runId, datasetId: null }
+      }
+      try {
+        ({ items, creditsCost } = await realScrapeRun(job.data, url))
+      } catch (scrapeErr) {
+        // Block or any scrape failure → honest FAILED run, never fake data.
+        clearTimeout(timeoutHandle)
+        const msg = scrapeErr instanceof ScrapeBlockedError
+          ? String(scrapeErr.message)
+          : `Scrape failed: ${String((scrapeErr as Error).message).slice(0, 200)}`
+        await prisma.run.update({
+          where: { id: runId },
+          data: { status: 'FAILED', finishedAt: new Date(), errorMessage: msg },
+        })
+        activeRunIds.delete(runId)
+        throw scrapeErr
       }
       const itemsScraped = items.length
 
