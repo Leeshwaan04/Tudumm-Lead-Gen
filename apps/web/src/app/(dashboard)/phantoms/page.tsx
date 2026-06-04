@@ -177,7 +177,10 @@ function LaunchModal({
     } else if (isSocial) {
       inputObj = { url: input.trim() };
     } else {
-      try { inputObj = JSON.parse(input || "{}"); } catch { inputObj = { query: input }; }
+      // Accept a plain URL (most common), or JSON, or a free-text query.
+      const v = input.trim();
+      if (/^https?:\/\//i.test(v)) inputObj = { url: v };
+      else { try { inputObj = JSON.parse(v || "{}"); } catch { inputObj = { query: v }; } }
     }
     try {
       // phantom.id is the real DB actor id — enqueue accepts it directly.
@@ -302,9 +305,9 @@ function LaunchModal({
                 </>
               ) : (
                 <>
-                  <label className="text-xs text-white/50 mb-1 block">Input JSON or URL</label>
-                  <textarea value={input} onChange={e => setInput(e.target.value)} rows={4}
-                    placeholder='{"url": "https://example.com"}'
+                  <label className="text-xs text-white/50 mb-1 block">Paste a URL to scrape</label>
+                  <textarea value={input} onChange={e => setInput(e.target.value)} rows={3}
+                    placeholder="https://example.com"
                     className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm font-mono text-white placeholder:text-white/20 resize-none focus:outline-none focus:border-violet-500/50" />
                 </>
               )}
