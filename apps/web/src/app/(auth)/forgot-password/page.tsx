@@ -1,7 +1,8 @@
 'use client'
 import { useState } from 'react'
 import Link from 'next/link'
-import { Zap, Loader2, AlertCircle } from 'lucide-react'
+import { Loader2, AlertCircle } from 'lucide-react'
+import { TudummMark } from '@/components/brand/Logo'
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
@@ -37,7 +38,7 @@ export default function ForgotPasswordPage() {
         <div className="text-center">
           <div className="flex items-center justify-center gap-2 mb-6">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600">
-              <Zap className="h-5 w-5 text-white" />
+              <TudummMark className="h-5 w-5 text-white" />
             </div>
             <span className="text-2xl font-bold text-white">Tudumm</span>
           </div>

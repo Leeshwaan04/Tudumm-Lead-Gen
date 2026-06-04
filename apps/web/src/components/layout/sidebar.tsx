@@ -3,6 +3,7 @@
 import React, { useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { TudummMark } from "@/components/brand/Logo";
 import {
   LayoutDashboard,
   Ghost,
@@ -88,14 +89,14 @@ export function Sidebar() {
         {(!sidebarCollapsed || isMobile) ? (
           <Link href="/dashboard" className="flex items-center gap-2 group flex-1">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 shadow-lg shadow-violet-500/25 shrink-0">
-              <Zap className="h-4 w-4 text-white" />
+              <TudummMark className="h-4 w-4 text-white" />
             </div>
             <span className="font-bold text-lg text-white tracking-tight">Tudumm</span>
           </Link>
         ) : (
           <Link href="/dashboard" className="mx-auto">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 shadow-lg shadow-violet-500/25">
-              <Zap className="h-4 w-4 text-white" />
+              <TudummMark className="h-4 w-4 text-white" />
             </div>
           </Link>
         )}
