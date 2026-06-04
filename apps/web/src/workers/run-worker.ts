@@ -148,6 +148,87 @@ async function realScrapeRun(
   return { items, creditsCost: Math.max(1, Math.ceil(items.length * 0.05)) }
 }
 
+/**
+ * Email Finder actor: look up a verified email via Hunter.io (then Apollo as
+ * fallback) from { domain, firstName, lastName }. This runs in the actor engine
+ * (run-worker), separate from the workflow `find-email` node.
+ */
+async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, unknown>[]; creditsCost: number }> {
+  const { runId } = data
+  const input = (data.input ?? {}) as Record<string, any>
+  await prisma.run.update({ where: { id: runId }, data: { status: 'RUNNING', startedAt: new Date() } })
+  await addLog(runId, 'INFO', 'Email Finder started')
+
+  const hunterKey = process.env.HUNTER_API_KEY
+  const apolloKey = process.env.APOLLO_API_KEY
+  if (!hunterKey && !apolloKey) {
+    await addLog(runId, 'ERROR', 'No HUNTER_API_KEY or APOLLO_API_KEY configured — cannot find emails. Set one in env (web + worker).')
+    throw new ScrapeBlockedError('Email Finder needs HUNTER_API_KEY or APOLLO_API_KEY')
+  }
+
+  // Accept a bare domain or a full company URL.
+  let domain: string = input.domain || input.companyDomain || ''
+  const maybeUrl = input.url || input.website
+  if (!domain && typeof maybeUrl === 'string') {
+    try { domain = new URL(/^https?:\/\//i.test(maybeUrl) ? maybeUrl : `https://${maybeUrl}`).hostname.replace(/^www\./, '') } catch { /* ignore */ }
+  }
+  const first = String(input.firstName || input.first_name || '').trim()
+  const last = String(input.lastName || input.last_name || '').trim()
+
+  if (!domain) {
+    await addLog(runId, 'ERROR', 'No company domain provided. Enter a domain like "stripe.com".')
+    throw new ScrapeBlockedError('Email Finder requires a company domain')
+  }
+  await addLog(runId, 'INFO', `Searching emails for ${first || '(any)'} ${last} @ ${domain}`)
+
+  const results: Record<string, unknown>[] = []
+  try {
+    if (hunterKey && (first || last)) {
+      const params = new URLSearchParams({ domain, first_name: first, last_name: last, api_key: hunterKey })
+      const r = await fetch(`https://api.hunter.io/v2/email-finder?${params}`, { signal: AbortSignal.timeout(15000) })
+      const d = await r.json().catch(() => ({}))
+      if (r.ok && d.data?.email) {
+        results.push({ email: d.data.email, firstName: first, lastName: last, domain, score: d.data.score ?? null, source: 'hunter' })
+        await addLog(runId, 'INFO', `Hunter found: ${d.data.email} (confidence ${d.data.score ?? '?'})`)
+      } else if (!r.ok) {
+        await addLog(runId, 'WARN', `Hunter API ${r.status}: ${(d.errors?.[0]?.details || JSON.stringify(d)).slice(0, 160)}`)
+      }
+    } else if (hunterKey && !first && !last) {
+      // No name → domain search returns known emails at the company.
+      const params = new URLSearchParams({ domain, api_key: hunterKey, limit: '20' })
+      const r = await fetch(`https://api.hunter.io/v2/domain-search?${params}`, { signal: AbortSignal.timeout(15000) })
+      const d = await r.json().catch(() => ({}))
+      if (r.ok && Array.isArray(d.data?.emails)) {
+        for (const e of d.data.emails) results.push({ email: e.value, firstName: e.first_name ?? null, lastName: e.last_name ?? null, position: e.position ?? null, domain, source: 'hunter-domain' })
+        await addLog(runId, 'INFO', `Hunter domain search found ${results.length} email(s) at ${domain}`)
+      } else if (!r.ok) {
+        await addLog(runId, 'WARN', `Hunter domain-search ${r.status}: ${(d.errors?.[0]?.details || '').slice(0, 160)}`)
+      }
+    }
+
+    if (results.length === 0 && apolloKey && (first || last)) {
+      const r = await fetch('https://api.apollo.io/v1/people/match', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Api-Key': apolloKey },
+        body: JSON.stringify({ first_name: first, last_name: last, domain }), signal: AbortSignal.timeout(15000),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (r.ok && d.person?.email) {
+        results.push({ email: d.person.email, firstName: first, lastName: last, domain, title: d.person.title ?? null, source: 'apollo' })
+        await addLog(runId, 'INFO', `Apollo found: ${d.person.email}`)
+      }
+    }
+  } catch (e: any) {
+    await addLog(runId, 'WARN', `Email lookup error: ${String(e.message).slice(0, 160)}`)
+  }
+
+  if (results.length === 0) {
+    await addLog(runId, 'INFO', 'No verified email found for the given inputs (this is a real result, not a failure).')
+  } else {
+    await addLog(runId, 'INFO', `Found ${results.length} email(s)`)
+  }
+  return { items: results, creditsCost: 1 }
+}
+
 function generateItems(slug: string, count: number): Record<string, unknown>[] {
   const items: Record<string, unknown>[] = []
   for (let i = 0; i < count; i++) {
@@ -285,11 +366,43 @@ const worker = new Worker<RunJobData>(
 
     const startedMs = Date.now()
     try {
+      // Enrichment actors (Email Finder / Apollo) don't scrape a URL — they call
+      // a data API. Route them first so they never fall into the scrape/simulate path.
+      const slug = job.data.actorSlug ?? ''
+      let items: Record<string, unknown>[]
+      let creditsCost: number
+      if (/email-finder|apollo-enrich/i.test(slug)) {
+        try {
+          ({ items, creditsCost } = await findEmailRun(job.data))
+        } catch (enrichErr) {
+          clearTimeout(timeoutHandle)
+          await prisma.run.update({
+            where: { id: runId },
+            data: { status: 'FAILED', finishedAt: new Date(), errorMessage: String((enrichErr as Error).message) },
+          })
+          activeRunIds.delete(runId)
+          throw enrichErr
+        }
+        const itemsEnriched = items.length
+        const s3KeyE = `datasets/${workspaceId}/${runId}/data.json`
+        try { await uploadJSON(s3KeyE, items); await addLog(runId, 'INFO', `Pushed ${itemsEnriched} item(s) to dataset storage`) } catch { /* ignore */ }
+        const datasetE = await prisma.dataset.create({
+          data: { workspaceId, runId, name: `${slug} - ${new Date().toLocaleDateString()}`, itemCount: itemsEnriched, sizeBytes: Buffer.byteLength(JSON.stringify(items)), s3Key: s3KeyE },
+        })
+        clearTimeout(timeoutHandle)
+        await prisma.run.update({
+          where: { id: runId },
+          data: { status: 'SUCCEEDED', finishedAt: new Date(), durationMs: Date.now() - startedMs, creditsCost, output: JSON.stringify({ itemsScraped: itemsEnriched, datasetId: datasetE.id }) },
+        })
+        await addLog(runId, 'INFO', 'Actor finished successfully')
+        activeRunIds.delete(runId)
+        await deliverWebhooks(workspaceId, { event: 'run.completed', runId, datasetId: datasetE.id, itemsScraped: itemsEnriched })
+        return { runId, datasetId: datasetE.id }
+      }
+
       // Real scrape when the input carries a URL; otherwise fall back to a
       // simulated sample run. Either path produces real, downloadable items.
       const url = extractUrl(job.data.input)
-      let items: Record<string, unknown>[]
-      let creditsCost: number
       if (url) {
         try {
           ({ items, creditsCost } = await realScrapeRun(job.data, url))
