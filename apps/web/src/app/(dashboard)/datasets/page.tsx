@@ -165,13 +165,19 @@ export default function DatasetsPage() {
     if (!selectedId) return
     setImporting(true)
     try {
-      const res = await fetch('/api/leads/import', {
+      const res = await fetch(`/api/datasets/${selectedId}/import-leads`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ datasetId: selectedId }),
+        body: JSON.stringify({}),
       })
       const data = await res.json()
-      showToast(`Imported ${data.count ?? 'some'} leads!`)
+      if (!res.ok) {
+        showToast(data.error ?? 'Import failed.')
+      } else if (data.imported === 0) {
+        showToast(data.skipped > 0 ? `All ${data.skipped} already in Leads` : 'No contacts found to import')
+      } else {
+        showToast(`Imported ${data.imported} lead${data.imported === 1 ? '' : 's'}${data.skipped ? ` (${data.skipped} skipped)` : ''}`)
+      }
     } catch { showToast('Import failed.') }
     setImporting(false)
   }
