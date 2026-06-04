@@ -226,6 +226,11 @@ export default function DashboardPage() {
     queryFn: () => fetch('/api/sequences').then(r => r.json()),
   })
 
+  const { data: linkedinRaw } = useQuery({
+    queryKey: ['linkedin-sessions-count'],
+    queryFn: () => fetch('/api/linkedin/sessions').then(r => r.json()),
+  })
+
   const runs: Run[] = Array.isArray(runsRaw) ? runsRaw.slice(0, 10).map(toRun) : []
 
   // Only render the chart when we have at least 2 data points — a single point
@@ -257,6 +262,7 @@ export default function DashboardPage() {
             runs={Array.isArray(runsRaw) ? runsRaw : []}
             leads={Array.isArray(leadsData?.leads) ? leadsData.leads : (leadsData?.total > 0 ? [{}] : [])}
             sequences={Array.isArray(sequencesRaw) ? sequencesRaw : []}
+            linkedinSessions={Array.isArray(linkedinRaw) ? linkedinRaw : []}
           />
         )}
         {/* Header */}

@@ -15,6 +15,7 @@ interface OnboardingChecklistProps {
   runs: any[]
   leads: any[]
   sequences: any[]
+  linkedinSessions: any[]
 }
 
 const STORAGE_KEY = 'tudumm-onboarding-dismissed'
@@ -24,6 +25,7 @@ export default function OnboardingChecklist({
   runs,
   leads,
   sequences,
+  linkedinSessions,
 }: OnboardingChecklistProps) {
   const [dismissed, setDismissed] = useState(true)
   const [mounted, setMounted] = useState(false)
@@ -46,7 +48,7 @@ export default function OnboardingChecklist({
     },
     {
       label: 'Connect LinkedIn session',
-      checked: false,
+      checked: linkedinSessions.length > 0,
       href: '/linkedin',
     },
     {
