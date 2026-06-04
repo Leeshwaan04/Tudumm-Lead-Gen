@@ -102,7 +102,7 @@ export default function OnboardingChecklist({
       {allComplete ? (
         <div className="mt-4 flex flex-col items-center gap-2 py-3 text-center">
           <span className="text-2xl">🎉</span>
-          <p className="text-sm font-medium text-white">You're all set!</p>
+          <p className="text-sm font-medium text-white">You&apos;re all set!</p>
           <p className="text-xs text-white/40">Dismissing in a moment…</p>
         </div>
       ) : (

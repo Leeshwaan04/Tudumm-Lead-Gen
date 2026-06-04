@@ -19,7 +19,7 @@ export async function POST(req: Request) {
       take: 500,
     })
 
-    const entry = logs.find((log: { id: string; userId: string; metadata: unknown }) => {
+    const entry = logs.find((log) => {
       try {
         const meta = JSON.parse(log.metadata as string)
         return meta.token === token && meta.expiresAt > Date.now() && !meta.used
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
       }
     })
 
-    if (!entry) {
+    if (!entry || !entry.userId) {
       return NextResponse.json({ error: 'Invalid or expired token' }, { status: 400 })
     }
 

@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server'
 export default auth((req) => {
   const { pathname } = req.nextUrl
   // Treat auth errors (missing/invalid secret) as unauthenticated — never expose protected pages
-  const isAuth = !!req.auth && !req.auth.error
+  const isAuth = !!req.auth && !(req.auth as { error?: unknown }).error
   const isAuthPage = pathname.startsWith('/login') || pathname.startsWith('/signup')
   const protectedPrefixes = [
     '/dashboard', '/actors', '/datasets', '/workflows', '/enrichment',

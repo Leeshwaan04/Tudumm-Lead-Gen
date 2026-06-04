@@ -154,7 +154,7 @@ async function realScrapeRun(
  * (run-worker), separate from the workflow `find-email` node.
  */
 async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, unknown>[]; creditsCost: number }> {
-  const { runId } = data
+  const { runId, workspaceId } = data
   const input = (data.input ?? {}) as Record<string, any>
   await prisma.run.update({ where: { id: runId }, data: { status: 'RUNNING', startedAt: new Date() } })
   await addLog(runId, 'INFO', 'Email Finder started')
@@ -227,6 +227,35 @@ async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, u
   } else {
     await addLog(runId, 'INFO', `Found ${results.length} email(s)`)
   }
+
+  // Surface found contacts on the Leads page too. Actor runs previously only
+  // produced a Dataset, so the Leads list stayed empty — this closes that gap.
+  let leadsCreated = 0
+  for (const r of results) {
+    const email = r.email ? String(r.email) : null
+    if (!email) continue
+    const exists = await prisma.lead.findFirst({ where: { workspaceId, email, deletedAt: null } })
+    if (exists) continue
+    const fn = (r.firstName as string) || ''
+    const ln = (r.lastName as string) || ''
+    await prisma.lead.create({
+      data: {
+        workspaceId,
+        email,
+        emailStatus: 'FOUND',
+        firstName: fn || null,
+        lastName: ln || null,
+        fullName: `${fn} ${ln}`.trim() || email,
+        company: (r.company as string) || null,
+        companyDomain: (r.domain as string) || domain || null,
+        title: (r.title as string) || (r.position as string) || null,
+        source: /apollo/i.test(data.actorSlug ?? '') ? 'Apollo Enricher' : 'Email Finder',
+      },
+    }).catch(() => {})
+    leadsCreated++
+  }
+  if (leadsCreated > 0) await addLog(runId, 'INFO', `Added ${leadsCreated} new lead(s) to your Leads list`)
+
   return { items: results, creditsCost: 1 }
 }
 
