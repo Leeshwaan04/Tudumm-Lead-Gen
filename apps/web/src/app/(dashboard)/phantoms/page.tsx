@@ -227,6 +227,13 @@ function LaunchModal({
           </div>
         ) : (
           <>
+            {(isLinkedIn || isGoogle || phantom.platform === "twitter" || phantom.platform === "instagram") && (
+              <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-200/80 leading-relaxed">
+                {isLinkedIn
+                  ? <>LinkedIn blocks anonymous scraping. For real results, <a href="/linkedin" className="underline font-medium">connect a LinkedIn session</a> first.</>
+                  : <>This source blocks datacenter IPs. For reliable results, <a href="/proxy" className="underline font-medium">add a residential proxy</a> first — otherwise the run may be blocked.</>}
+              </div>
+            )}
             <div>
               {isLinkedIn ? (
                 <>
