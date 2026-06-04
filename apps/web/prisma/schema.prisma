@@ -53,6 +53,7 @@ model Workspace {
   proxyConfigs        ProxyConfig[]
   webhooks            Webhook[]
   linkedInSessions    LinkedInSession[]
+  socialSessions      SocialSession[]
   enrichmentJobs      EnrichmentJob[]
   workflowDefinitions WorkflowDefinition[]
   playbooks           Playbook[]
@@ -396,6 +397,29 @@ model LinkedInSession {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@map("linkedin_sessions")
+}
+
+// Generic social session store for Twitter, Instagram, and future platforms.
+// LinkedIn keeps its own model for backwards compatibility.
+model SocialSession {
+  id            String    @id @default(cuid())
+  workspaceId   String
+  platform      String    // TWITTER | INSTAGRAM
+  alias         String
+  email         String    @default("")
+  sessionCookie String    // AES-256-GCM encrypted (same cipher as LinkedInSession)
+  status        String    @default("ACTIVE") // ACTIVE | EXPIRED | BANNED
+  dailyLimit    Int       @default(100)
+  dailyUsed     Int       @default(0)
+  riskScore     Int       @default(0)
+  lastUsedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, platform, status])
+  @@map("social_sessions")
 }
 
 model EnrichmentJob {

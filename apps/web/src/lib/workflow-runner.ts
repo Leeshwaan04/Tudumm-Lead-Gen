@@ -60,9 +60,18 @@ async function executeNode(
   switch (slug) {
     case 'scrape-linkedin':
     case 'scrape-google-maps':
+    case 'scrape-twitter':
+    case 'scrape-instagram':
+    case 'scrape-github':
     case 'scrape-web': {
-      const url = cfg.url || cfg.searchUrl
-      if (!url) return { items: input, summary: 'no URL configured — skipped', skipped: true }
+      let url = cfg.url || cfg.searchUrl
+      // Google Maps node configures a free-text query + optional location instead of a URL.
+      if (!url && slug === 'scrape-google-maps' && cfg.query) {
+        const q = [cfg.query, cfg.location].filter(Boolean).join(' ')
+        url = `https://www.google.com/maps/search/${encodeURIComponent(q)}`
+      }
+      if (!url && cfg.query) url = `https://www.google.com/search?q=${encodeURIComponent(cfg.query)}`
+      if (!url) return { items: input, summary: 'no URL or query configured — skipped', skipped: true }
       const res = await fetch(`${BROWSER_SERVICE_URL}/browser/scrape`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url, waitFor: 'domcontentloaded' }),
@@ -162,10 +171,86 @@ async function executeNode(
     }
 
     case 'find-email': {
-      if (!process.env.HUNTER_API_KEY && !process.env.APOLLO_API_KEY) {
-        return { items: input, summary: 'Find Email needs a Hunter/Apollo API key — skipped', skipped: true }
+      const hunterKey = process.env.HUNTER_API_KEY
+      const apolloKey = process.env.APOLLO_API_KEY
+      if (!hunterKey && !apolloKey) {
+        return { items: input, summary: 'Find Email: set HUNTER_API_KEY or APOLLO_API_KEY — skipped', skipped: true }
       }
-      return { items: input, summary: 'find-email not yet implemented', skipped: true }
+      let found = 0
+      const enriched: Item[] = []
+      for (const it of input) {
+        if (it.email && String(it.email).includes('@')) { enriched.push(it); continue }
+        const first = firstName(it)
+        const last = (it.lastName || it.fullName?.split(' ').slice(1).join(' ') || '').trim()
+        const domain = it.domain || it.companyDomain
+          || (it.company ? `${String(it.company).toLowerCase().replace(/[^a-z0-9]/g, '')}.com` : null)
+        if (!domain) { enriched.push(it); continue }
+        try {
+          let email: string | null = null
+          if (hunterKey) {
+            const params = new URLSearchParams({ domain, first_name: first, last_name: last, api_key: hunterKey })
+            const r = await fetch(`https://api.hunter.io/v2/email-finder?${params}`, { signal: AbortSignal.timeout(10000) })
+            if (r.ok) {
+              const d = await r.json()
+              email = d.data?.email ?? null
+            }
+          }
+          if (!email && apolloKey) {
+            const r = await fetch('https://api.apollo.io/v1/people/match', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'X-Api-Key': apolloKey },
+              body: JSON.stringify({ first_name: first, last_name: last, domain }),
+              signal: AbortSignal.timeout(10000),
+            })
+            if (r.ok) {
+              const d = await r.json()
+              email = d.person?.email ?? null
+            }
+          }
+          if (email) { enriched.push({ ...it, email }); found++ } else enriched.push(it)
+        } catch { enriched.push(it) }
+      }
+      return { items: enriched, summary: `found ${found} email(s) for ${input.length} lead(s)` }
+    }
+
+    case 'apollo-enrich': {
+      const apolloKey = process.env.APOLLO_API_KEY
+      if (!apolloKey) {
+        return { items: input, summary: 'Apollo Enricher: set APOLLO_API_KEY — skipped', skipped: true }
+      }
+      let enriched2 = 0
+      const apolloItems: Item[] = []
+      for (const it of input) {
+        try {
+          const first = firstName(it)
+          const last = (it.lastName || it.fullName?.split(' ').slice(1).join(' ') || '').trim()
+          const domain = it.domain || it.companyDomain
+            || (it.company ? `${String(it.company).toLowerCase().replace(/[^a-z0-9]/g, '')}.com` : null)
+          const r = await fetch('https://api.apollo.io/v1/people/match', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Api-Key': apolloKey },
+            body: JSON.stringify({ first_name: first, last_name: last, domain, email: it.email }),
+            signal: AbortSignal.timeout(10000),
+          })
+          if (!r.ok) { apolloItems.push(it); continue }
+          const d = await r.json()
+          const p = d.person ?? {}
+          apolloItems.push({
+            ...it,
+            email: it.email || p.email || null,
+            phone: it.phone || p.phone_numbers?.[0]?.sanitized_number || null,
+            title: it.title || p.title || null,
+            company: it.company || p.organization?.name || null,
+            linkedinUrl: it.linkedinUrl || p.linkedin_url || null,
+            city: p.city || null,
+            country: p.country || null,
+            seniority: p.seniority || null,
+            apolloId: p.id || null,
+          })
+          enriched2++
+        } catch { apolloItems.push(it) }
+      }
+      return { items: apolloItems, summary: `Apollo enriched ${enriched2}/${input.length} lead(s)` }
     }
 
     case 'save-to-crm':

@@ -29,6 +29,10 @@ function extractUrl(input: Record<string, unknown> | undefined): string | null {
     if (typeof first === 'string' && /^https?:\/\//i.test(first)) return first
     if (first && typeof first === 'object' && typeof (first as any).url === 'string') return (first as any).url
   }
+  // Google Maps Scraper sends { query: "..." } — convert to a Maps search URL
+  if (typeof input.query === 'string' && input.query.trim()) {
+    return `https://www.google.com/maps/search/${encodeURIComponent(input.query.trim())}`
+  }
   return null
 }
 
@@ -48,9 +52,37 @@ async function linkedInCookies(workspaceId: string): Promise<any[] | undefined> 
     })
     if (!session) return undefined
     const raw = decryptCookie(session.sessionCookie)
-    // Stored value may be a raw li_at token or a JSON cookie array.
     if (raw.startsWith('[')) return JSON.parse(raw)
     return [{ name: 'li_at', value: raw, domain: '.linkedin.com', path: '/' }]
+  } catch {
+    return undefined
+  }
+}
+
+async function twitterCookies(workspaceId: string): Promise<any[] | undefined> {
+  try {
+    const session = await prisma.socialSession.findFirst({
+      where: { workspaceId, platform: 'TWITTER', status: 'ACTIVE' }, orderBy: { lastUsedAt: 'asc' },
+    })
+    if (!session) return undefined
+    const raw = decryptCookie(session.sessionCookie)
+    if (raw.startsWith('[')) return JSON.parse(raw)
+    return [{ name: 'auth_token', value: raw, domain: '.twitter.com', path: '/' },
+            { name: 'auth_token', value: raw, domain: '.x.com', path: '/' }]
+  } catch {
+    return undefined
+  }
+}
+
+async function instagramCookies(workspaceId: string): Promise<any[] | undefined> {
+  try {
+    const session = await prisma.socialSession.findFirst({
+      where: { workspaceId, platform: 'INSTAGRAM', status: 'ACTIVE' }, orderBy: { lastUsedAt: 'asc' },
+    })
+    if (!session) return undefined
+    const raw = decryptCookie(session.sessionCookie)
+    if (raw.startsWith('[')) return JSON.parse(raw)
+    return [{ name: 'sessionid', value: raw, domain: '.instagram.com', path: '/' }]
   } catch {
     return undefined
   }
@@ -70,6 +102,16 @@ async function realScrapeRun(
     cookies = await linkedInCookies(workspaceId)
     if (cookies) await addLog(runId, 'INFO', 'Using connected LinkedIn session for authenticated scrape')
     else await addLog(runId, 'WARN', 'No connected LinkedIn session — LinkedIn will likely block this request')
+  } else if (/(twitter|x)\.com/i.test(url)) {
+    cookies = await twitterCookies(workspaceId)
+    if (cookies) await addLog(runId, 'INFO', 'Using connected Twitter/X session for authenticated scrape')
+    else await addLog(runId, 'WARN', 'No connected Twitter/X session — Twitter will likely block this request')
+  } else if (/instagram\.com/i.test(url)) {
+    cookies = await instagramCookies(workspaceId)
+    if (cookies) await addLog(runId, 'INFO', 'Using connected Instagram session for authenticated scrape')
+    else await addLog(runId, 'WARN', 'No connected Instagram session — Instagram will likely block this request')
+  } else if (/google\.com\/maps/i.test(url)) {
+    await addLog(runId, 'INFO', 'Google Maps scrape — using residential proxy if configured')
   }
 
   const scrapeEndpoint = `${BROWSER_SERVICE_URL}/browser/scrape`

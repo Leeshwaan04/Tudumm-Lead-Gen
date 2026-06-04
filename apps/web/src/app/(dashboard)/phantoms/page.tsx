@@ -10,7 +10,8 @@ import {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Phantom {
-  id: string;        // mapped from slug
+  id: string;        // real DB actor id — passed directly to /api/runs/enqueue
+  slug: string;      // actor slug — used for platform/input detection
   name: string;
   platform: string;  // derived from slug / category
   category: string;
@@ -59,31 +60,44 @@ function deriveTags(slug: string): string[] {
   return slug.split("-").filter(w => w.length > 2).slice(0, 3);
 }
 
-/** Map API actor shape → Phantom shape. */
+/** Parse a JSON-string-or-array field from the DB actor row. */
+function parseJsonArray(v: unknown): string[] {
+  if (Array.isArray(v)) return v.map(String);
+  if (typeof v === "string") { try { const p = JSON.parse(v); return Array.isArray(p) ? p.map(String) : []; } catch { return []; } }
+  return [];
+}
+
+/** Map a real DB actor row (/api/actors?store=true) → Phantom shape. */
 function mapActor(a: {
+  id: string;
   slug: string;
   name: string;
-  category: string;
   description: string;
-  price: number;
-  rating: number;
-  runs: number;
+  categories?: unknown;
+  tags?: unknown;
+  rating?: number;
+  totalRuns?: number;
 }): Phantom {
-  const platform = derivePlatform(a.slug, a.category);
+  const cats = parseJsonArray(a.categories);
+  const tags = parseJsonArray(a.tags);
+  const category = cats[0] ?? "General";
+  const platform = derivePlatform(a.slug, category);
+  const runs = a.totalRuns ?? 0;
   return {
-    id: a.slug,
+    id: a.id,
+    slug: a.slug,
     name: a.name,
     platform,
-    category: a.category,
+    category,
     description: a.description,
-    icon: deriveIcon(a.slug, a.category),
-    unitsPerRun: a.price,
+    icon: deriveIcon(a.slug, category),
+    unitsPerRun: 1,
     averageDuration: 120,
-    totalLaunches: a.runs,
-    rating: a.rating,
+    totalLaunches: runs,
+    rating: a.rating ?? 4.5,
     outputFields: [],
-    isPopular: a.runs > 10000,
-    tags: deriveTags(a.slug),
+    isPopular: runs > 100000,
+    tags: tags.length ? tags.slice(0, 3) : deriveTags(a.slug),
   };
 }
 
@@ -137,8 +151,17 @@ function LaunchModal({
   const [launching, setLaunching] = useState(false);
   const [done, setDone] = useState(false);
 
+  const slug = phantom.slug.toLowerCase();
   const isLinkedIn = phantom.platform === "linkedin";
-  const isGoogle = phantom.platform === "google";
+  const isGoogle = phantom.platform === "google" || slug.includes("google-maps");
+  const isEmailFinder = slug.includes("email");
+  const isApollo = slug.includes("apollo");
+  const isSocial = ["twitter", "github", "instagram"].includes(phantom.platform);
+
+  // Extra fields for Email Finder
+  const [efDomain, setEfDomain] = useState("");
+  const [efFirst, setEfFirst] = useState("");
+  const [efLast, setEfLast] = useState("");
 
   async function launch() {
     setLaunching(true);
@@ -147,25 +170,21 @@ function LaunchModal({
       inputObj = { url: input, maxResults: 100 };
     } else if (isGoogle) {
       inputObj = { query: input };
+    } else if (isEmailFinder) {
+      inputObj = { domain: efDomain.trim(), firstName: efFirst.trim(), lastName: efLast.trim() };
+    } else if (isApollo) {
+      inputObj = { domain: input.trim() };
+    } else if (isSocial) {
+      inputObj = { url: input.trim() };
     } else {
       try { inputObj = JSON.parse(input || "{}"); } catch { inputObj = { query: input }; }
     }
     try {
-      // Look up the real actor id from the search API
-      let actorId = phantom.id;
-      try {
-        const actorsData = await fetch(`/api/actors?search=${encodeURIComponent(phantom.name)}`).then(r => r.json());
-        if (Array.isArray(actorsData) && actorsData.length > 0) {
-          actorId = actorsData[0].id ?? actorsData[0].slug ?? actorId;
-        }
-      } catch {
-        // Use slug-based id as fallback — non-fatal
-      }
-
+      // phantom.id is the real DB actor id — enqueue accepts it directly.
       const res = await fetch("/api/runs/enqueue", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actorId, input: inputObj }),
+        body: JSON.stringify({ actorId: phantom.id, input: inputObj }),
       });
 
       if (!res.ok) {
@@ -212,33 +231,74 @@ function LaunchModal({
               {isLinkedIn ? (
                 <>
                   <label className="text-xs text-white/50 mb-1 block">LinkedIn Search URL or Profile URL</label>
-                  <input
-                    value={input}
-                    onChange={e => setInput(e.target.value)}
+                  <input value={input} onChange={e => setInput(e.target.value)}
                     placeholder="https://www.linkedin.com/search/results/people/..."
-                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-violet-500/50"
-                  />
+                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-violet-500/50" />
+                  <p className="text-xs text-white/30 mt-1.5">Requires an active LinkedIn session in Settings → LinkedIn.</p>
                 </>
               ) : isGoogle ? (
                 <>
                   <label className="text-xs text-white/50 mb-1 block">Search Query</label>
-                  <input
-                    value={input}
-                    onChange={e => setInput(e.target.value)}
+                  <input value={input} onChange={e => setInput(e.target.value)}
                     placeholder="coffee shops in New York"
-                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-violet-500/50"
-                  />
+                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-violet-500/50" />
+                </>
+              ) : isEmailFinder ? (
+                <>
+                  <label className="text-xs text-white/50 mb-1 block">Company Domain</label>
+                  <input value={efDomain} onChange={e => setEfDomain(e.target.value)}
+                    placeholder="acme.com"
+                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-violet-500/50 mb-2" />
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <label className="text-xs text-white/50 mb-1 block">First Name</label>
+                      <input value={efFirst} onChange={e => setEfFirst(e.target.value)}
+                        placeholder="John"
+                        className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-violet-500/50" />
+                    </div>
+                    <div className="flex-1">
+                      <label className="text-xs text-white/50 mb-1 block">Last Name</label>
+                      <input value={efLast} onChange={e => setEfLast(e.target.value)}
+                        placeholder="Smith"
+                        className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-violet-500/50" />
+                    </div>
+                  </div>
+                  <p className="text-xs text-white/30 mt-1.5">Requires HUNTER_API_KEY or APOLLO_API_KEY set in env.</p>
+                </>
+              ) : isApollo ? (
+                <>
+                  <label className="text-xs text-white/50 mb-1 block">Company Domain to enrich leads from</label>
+                  <input value={input} onChange={e => setInput(e.target.value)}
+                    placeholder="acme.com"
+                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-violet-500/50" />
+                  <p className="text-xs text-white/30 mt-1.5">Requires APOLLO_API_KEY set in env.</p>
+                </>
+              ) : isSocial ? (
+                <>
+                  <label className="text-xs text-white/50 mb-1 block">
+                    {phantom.platform === "twitter" ? "Twitter/X Profile or Search URL" :
+                     phantom.platform === "github" ? "GitHub User, Org, or Search URL" :
+                     "Instagram Profile URL"}
+                  </label>
+                  <input value={input} onChange={e => setInput(e.target.value)}
+                    placeholder={
+                      phantom.platform === "twitter" ? "https://twitter.com/search?q=saas+founder" :
+                      phantom.platform === "github" ? "https://github.com/search?q=python&type=users" :
+                      "https://www.instagram.com/explore/tags/startup/"
+                    }
+                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-violet-500/50" />
+                  {(phantom.platform === "twitter" || phantom.platform === "instagram") && (
+                    <p className="text-xs text-white/30 mt-1.5">
+                      Requires a connected session in Settings → Social Accounts.
+                    </p>
+                  )}
                 </>
               ) : (
                 <>
-                  <label className="text-xs text-white/50 mb-1 block">Input JSON or Search Query</label>
-                  <textarea
-                    value={input}
-                    onChange={e => setInput(e.target.value)}
-                    rows={4}
-                    placeholder='{"key": "value"}'
-                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm font-mono text-white placeholder:text-white/20 resize-none focus:outline-none focus:border-violet-500/50"
-                  />
+                  <label className="text-xs text-white/50 mb-1 block">Input JSON or URL</label>
+                  <textarea value={input} onChange={e => setInput(e.target.value)} rows={4}
+                    placeholder='{"url": "https://example.com"}'
+                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm font-mono text-white placeholder:text-white/20 resize-none focus:outline-none focus:border-violet-500/50" />
                 </>
               )}
             </div>
@@ -400,10 +460,12 @@ export default function PhantomsPage() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch("/api/actors/store");
+        // Load real, runnable DB actors (published marketplace actors) so each
+        // phantom maps 1:1 to an actor id that /api/runs/enqueue accepts.
+        const res = await fetch("/api/actors?store=true");
         if (!res.ok) throw new Error(`Failed to load actors (${res.status})`);
         const data = await res.json();
-        if (!Array.isArray(data)) throw new Error("Unexpected response from actors store");
+        if (!Array.isArray(data)) throw new Error("Unexpected response from actors API");
         setPhantoms(data.map(mapActor));
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Could not load phantoms.";

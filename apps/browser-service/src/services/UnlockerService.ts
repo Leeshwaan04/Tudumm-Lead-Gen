@@ -2,6 +2,7 @@ import { Page } from 'playwright';
 import pino from 'pino';
 import { BrowserPool } from './BrowserPool';
 import { AntiBotEngine } from './AntiBotEngine';
+import { solveIfPresent, detectCaptcha, solveCaptcha } from '../stealth/captcha';
 
 const logger = pino({ name: 'unlocker-service' });
 
@@ -169,19 +170,27 @@ export class UnlockerService {
         if (botCheck.blocked) {
           logger.warn(
             { attempt, reason: botCheck.reason, url },
-            'Bot challenge detected, retrying with different fingerprint'
+            'Bot challenge detected, attempting captcha solve'
           );
 
           if (botCheck.captchaType) {
-            const solved = await this.antiBot.solveCaptcha(page, botCheck.captchaType);
-            if (solved) {
-              // Re-check after solving
-              const recheck = await this.antiBot.detectBotChallenge(page);
-              if (!recheck.blocked) {
-                const html = await page.content();
-                this.pool.release(session.id);
-                return { html, status, attempts: attempt, proxyUsed: proxyUrl, blocked: false, url: page.url() };
+            try {
+              // Use the real 2captcha integration from stealth/captcha.ts
+              const captchaType = await detectCaptcha(page);
+              if (captchaType) {
+                await solveCaptcha(page, captchaType);
+                logger.info({ captchaType }, 'Captcha solved — re-checking page');
+                const recheck = await this.antiBot.detectBotChallenge(page);
+                if (!recheck.blocked) {
+                  const html = await page.content();
+                  let data: Record<string, unknown> | undefined;
+                  try { data = await page.evaluate(pageExtractor); } catch { /* ignore */ }
+                  this.pool.release(session.id);
+                  return { html, status, attempts: attempt, proxyUsed: proxyUrl, blocked: false, url: page.url(), data };
+                }
               }
+            } catch (captchaErr) {
+              logger.warn({ captchaErr }, 'Captcha solve failed — rotating fingerprint and retrying');
             }
           }
 
@@ -189,6 +198,9 @@ export class UnlockerService {
           await this.antiBot.simulateHumanDelay(1000, 3000);
           continue;
         }
+
+        // Try to auto-solve any captcha that appeared after navigation
+        try { await solveIfPresent(page); } catch { /* non-fatal */ }
 
         // Human-like delay before extracting content
         await this.antiBot.simulateHumanDelay(500, 1500);
