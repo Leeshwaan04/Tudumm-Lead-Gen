@@ -189,11 +189,17 @@ async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, u
   const first = String(input.firstName || input.first_name || '').trim()
   const last = String(input.lastName || input.last_name || '').trim()
 
-  if (!domain) {
+  // Apollo people-search builds a LIST by criteria (title/company/keywords) — it
+  // doesn't need a person or even a domain.
+  const isApolloSearch = /apollo/i.test(data.actorSlug ?? '') && !first && !last &&
+    !!(input.title || input.titles || input.keywords || input.query)
+  if (!domain && !isApolloSearch) {
     await addLog(runId, 'ERROR', 'No company domain provided. Enter a domain like "stripe.com".')
     throw new ScrapeBlockedError('Email Finder requires a company domain')
   }
-  await addLog(runId, 'INFO', `Searching emails for ${first || '(any)'} ${last} @ ${domain}`)
+  await addLog(runId, 'INFO', isApolloSearch
+    ? `Apollo people search: ${input.title || input.titles || input.keywords || input.query}`
+    : `Searching emails for ${first || '(any)'} ${last} @ ${domain}`)
 
   const results: Record<string, unknown>[] = []
   try {
@@ -230,6 +236,36 @@ async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, u
       if (r.ok && d.person?.email) {
         results.push({ email: d.person.email, firstName: first, lastName: last, domain, title: d.person.title ?? null, source: 'apollo' })
         await addLog(runId, 'INFO', `Apollo found: ${d.person.email}`)
+      }
+    }
+
+    // Apollo People Search — build a lead list by criteria (the people-search API).
+    if (results.length === 0 && apolloKey && isApolloSearch) {
+      const titles = input.titles || (input.title ? [input.title] : undefined)
+      const body: Record<string, unknown> = { page: 1, per_page: 25 }
+      if (titles) body.person_titles = titles
+      if (domain) body.q_organization_domains = [domain]
+      if (input.keywords || input.query) body.q_keywords = input.keywords || input.query
+      const r = await fetch('https://api.apollo.io/v1/mixed_people/search', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Api-Key': apolloKey },
+        body: JSON.stringify(body), signal: AbortSignal.timeout(20000),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (r.ok && Array.isArray(d.people)) {
+        for (const pp of d.people) {
+          const em = pp.email && !/email_not_unlocked|domain\.com$/i.test(pp.email) ? pp.email : null
+          results.push({
+            email: em,
+            firstName: pp.first_name ?? null, lastName: pp.last_name ?? null,
+            title: pp.title ?? null, company: pp.organization?.name ?? null,
+            linkedinUrl: pp.linkedin_url ?? null,
+            domain: pp.organization?.primary_domain ?? domain ?? null,
+            source: 'apollo-search',
+          })
+        }
+        await addLog(runId, 'INFO', `Apollo search returned ${results.length} people`)
+      } else if (!r.ok) {
+        await addLog(runId, 'WARN', `Apollo search ${r.status}: ${JSON.stringify(d).slice(0, 160)}`)
       }
     }
   } catch (e: any) {

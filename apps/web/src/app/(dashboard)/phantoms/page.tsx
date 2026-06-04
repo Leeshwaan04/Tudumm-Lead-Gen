@@ -94,7 +94,7 @@ function mapActor(a: {
     unitsPerRun: 1,
     averageDuration: 120,
     totalLaunches: runs,
-    rating: a.rating ?? 4.5,
+    rating: a.rating ?? 0,
     outputFields: [],
     isPopular: runs > 100000,
     tags: tags.length ? tags.slice(0, 3) : deriveTags(a.slug),
@@ -397,12 +397,21 @@ function PhantomCardItem({ phantom, onLaunch }: { phantom: Phantom; onLaunch: ()
           <div className="text-white/30 mt-0.5">runs/unit</div>
         </div>
         <div className="rounded-lg bg-white/5 p-2">
-          <div className="flex items-center justify-center gap-1 text-yellow-400 font-semibold">★ {phantom.rating.toFixed(1)}</div>
-          <div className="text-white/30 mt-0.5">rating</div>
+          {phantom.rating > 0 ? (
+            <>
+              <div className="flex items-center justify-center gap-1 text-yellow-400 font-semibold">★ {phantom.rating.toFixed(1)}</div>
+              <div className="text-white/30 mt-0.5">rating</div>
+            </>
+          ) : (
+            <>
+              <div className="flex items-center justify-center gap-1 text-violet-300 font-semibold">New</div>
+              <div className="text-white/30 mt-0.5">phantom</div>
+            </>
+          )}
         </div>
         <div className="rounded-lg bg-white/5 p-2">
           <div className="flex items-center justify-center gap-1 text-emerald-400 font-semibold"><Play className="h-3 w-3" />{formatN(phantom.totalLaunches)}</div>
-          <div className="text-white/30 mt-0.5">launches</div>
+          <div className="text-white/30 mt-0.5">{phantom.totalLaunches === 1 ? "run" : "runs"}</div>
         </div>
       </div>
 
