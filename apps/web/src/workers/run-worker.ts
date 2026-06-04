@@ -114,9 +114,11 @@ async function realScrapeRun(
     await addLog(runId, 'INFO', 'Google Maps scrape — using residential proxy if configured')
   }
 
-  // JS-heavy sites need full render (networkidle) or the page is an empty shell.
-  const dynamic = /linkedin\.com|instagram\.com|(twitter|x)\.com|google\.[^/]+\/maps|producthunt\.com/i.test(url)
-  const waitFor = dynamic ? 'networkidle' : 'domcontentloaded'
+  // JS-heavy sites need render time. Maps/Twitter never reach networkidle
+  // (constant background XHR/tiles) → use 'load'; others networkidle.
+  const neverIdle = /google\.[^/]+\/maps|(twitter|x)\.com/i.test(url)
+  const dynamic = /linkedin\.com|instagram\.com|producthunt\.com/i.test(url)
+  const waitFor = neverIdle ? 'load' : dynamic ? 'networkidle' : 'domcontentloaded'
 
   const scrapeEndpoint = `${BROWSER_SERVICE_URL}/browser/scrape`
   const res = await fetch(scrapeEndpoint, {
