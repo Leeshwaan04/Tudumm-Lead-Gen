@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
 import { runWorkflow } from '@/lib/workflow-runner'
+import { publishWorkflowJob } from '@/lib/queues/workflow-queue'
 import { guardExpensive, getClientIp } from '@/lib/rate-limit'
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -36,7 +37,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       },
     })
 
-    runWorkflow(id, workspaceId, execution.id)
+    // Run on the worker (durable, survives long pipelines). If Redis is
+    // unavailable, fall back to inline execution so the feature still works.
+    try {
+      await publishWorkflowJob({ workflowId: id, workspaceId, executionId: execution.id })
+    } catch (queueErr) {
+      console.error('[Workflow] enqueue failed, running inline:', queueErr)
+      runWorkflow(id, workspaceId, execution.id)
+    }
 
     return NextResponse.json({ ...execution, nodeStates }, { status: 201 })
   } catch (e: any) {

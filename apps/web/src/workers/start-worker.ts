@@ -2,6 +2,7 @@
 // Run with: node --require tsx/cjs src/workers/start-worker.ts
 import './run-worker'
 import './sequence-worker'
+import './workflow-worker'
 import { startScheduler } from '../lib/scheduler'
 
 console.log('Worker process started. Waiting for jobs...')
