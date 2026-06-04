@@ -1,4 +1,5 @@
 'use client'
+import { HelpTip } from "@/components/ui/HelpTip";
 
 import { useState, useEffect, useCallback } from 'react'
 import {
@@ -484,6 +485,7 @@ export default function SequencesPage() {
         <div className="p-4 border-b border-white/10 flex items-center justify-between">
           <h1 className="text-lg font-semibold flex items-center gap-2">
             <GitBranch className="h-5 w-5 text-violet-400" />Sequences
+            <HelpTip text="Sequences send automated, multi-step outreach (email or LinkedIn) to enrolled leads, with delays between steps. Follow-ups stop automatically when someone replies." example="Day 1 intro email → Day 3 follow-up → Day 6 break-up note." />
           </h1>
           <div className="flex items-center gap-2">
             <button

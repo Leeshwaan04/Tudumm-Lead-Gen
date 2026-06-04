@@ -4,8 +4,9 @@ import { useState, useEffect } from "react";
 import { WorkflowBuilder } from "@/components/workflow/WorkflowBuilder";
 import {
   GitBranch, Plus, Play, Trash2, Edit2, Zap,
-  CheckCircle, Clock, PauseCircle, RefreshCw,
+  CheckCircle, Clock, PauseCircle, RefreshCw, MapPin, Mail, Linkedin, Send,
 } from "lucide-react";
+import { HelpTip } from "@/components/ui/HelpTip";
 
 interface Workflow {
   id: string;
@@ -14,6 +15,66 @@ interface Workflow {
   nodeCount?: number;
   lastRunAt?: string | null;
   totalRuns?: number;
+}
+
+// ─── Outcome-named templates: clone into a working pipeline in one click ──────
+type Step = { slug: string; label: string; category: string; config?: Record<string, string> };
+type Template = { key: string; name: string; outcome: string; gives: string; icon: any; steps: Step[] };
+
+const TEMPLATES: Template[] = [
+  {
+    key: "local-prospecting", name: "Local Business Prospecting", icon: MapPin,
+    outcome: "Build a call/email list of local businesses from Google Maps.",
+    gives: "name, address, phone, website",
+    steps: [
+      { slug: "scrape-google-maps", label: "Google Maps", category: "action" },
+      { slug: "has-phone", label: "Has Phone?", category: "condition" },
+      { slug: "export-csv", label: "Export CSV", category: "output", config: { filename: "local-leads" } },
+    ],
+  },
+  {
+    key: "find-and-email", name: "Find & Email B2B Leads", icon: Mail,
+    outcome: "Scrape prospects, score fit, and auto-enroll the best into outreach.",
+    gives: "qualified leads enrolled in a sequence",
+    steps: [
+      { slug: "scrape-google-maps", label: "Google Maps", category: "action" },
+      { slug: "ai-enrich", label: "AI Enrich", category: "action" },
+      { slug: "icp-score-filter", label: "ICP Score Filter", category: "condition", config: { minScore: "70" } },
+      { slug: "add-to-sequence", label: "Add to Sequence", category: "action" },
+    ],
+  },
+  {
+    key: "linkedin-enrich", name: "LinkedIn Lead Enrichment", icon: Linkedin,
+    outcome: "Pull a LinkedIn profile, score it, and export. (Needs a connected LinkedIn session.)",
+    gives: "enriched profiles with ICP score",
+    steps: [
+      { slug: "scrape-linkedin", label: "Scrape LinkedIn", category: "action" },
+      { slug: "ai-enrich", label: "AI Enrich", category: "action" },
+      { slug: "icp-score-filter", label: "ICP Score Filter", category: "condition", config: { minScore: "75" } },
+      { slug: "export-csv", label: "Export CSV", category: "output", config: { filename: "linkedin-leads" } },
+    ],
+  },
+  {
+    key: "scrape-notify", name: "Scrape & Push to Your App", icon: Send,
+    outcome: "Scrape a page, enrich, and POST the results to any external app.",
+    gives: "structured data sent to your webhook",
+    steps: [
+      { slug: "scrape-web", label: "Scrape Web", category: "action" },
+      { slug: "ai-enrich", label: "AI Enrich", category: "action" },
+      { slug: "send-webhook", label: "Send Webhook", category: "action" },
+    ],
+  },
+];
+
+function buildGraph(steps: Step[]) {
+  const nodes = steps.map((s, i) => ({
+    id: `n${i + 1}`,
+    type: "custom",
+    position: { x: 280, y: 80 + i * 130 },
+    data: { label: s.label, description: "", category: s.category, slug: s.slug, config: s.config ?? {}, configured: !!s.config },
+  }));
+  const edges = steps.slice(1).map((_, i) => ({ id: `e${i}`, source: `n${i + 1}`, target: `n${i + 2}` }));
+  return { nodes, edges };
 }
 
 function statusBadge(status: string) {
@@ -88,6 +149,25 @@ export default function WorkflowsPage() {
     setView("builder");
   }
 
+  const [creatingTpl, setCreatingTpl] = useState<string | null>(null);
+  async function createFromTemplate(t: Template) {
+    setCreatingTpl(t.key);
+    try {
+      const { nodes, edges } = buildGraph(t.steps);
+      const res = await fetch("/api/workflows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: t.name, nodes: JSON.stringify(nodes), edges: JSON.stringify(edges) }),
+      });
+      if (!res.ok) throw new Error(`Status ${res.status}`);
+      const wf = await res.json();
+      openBuilder(wf.id);
+    } catch (err) {
+      showToast(`Couldn't create from template: ${err instanceof Error ? err.message : "error"}`);
+      setCreatingTpl(null);
+    }
+  }
+
   if (view === "builder") {
     return (
       <div className="flex flex-col flex-1 min-h-0">
@@ -112,6 +192,10 @@ export default function WorkflowsPage() {
         <div>
           <h1 className="text-2xl font-semibold flex items-center gap-2">
             <GitBranch className="h-6 w-6 text-violet-400" />Workflows
+            <HelpTip
+              text="Workflows chain steps into an automated lead pipeline — scrape, enrich, filter, then email or export. Build once; it runs for every lead."
+              example="Google Maps → AI Enrich → keep ICP 70+ → Add to Sequence"
+            />
           </h1>
           <p className="text-sm text-white/40 mt-0.5">Automate multi-step lead generation pipelines</p>
         </div>
@@ -123,22 +207,59 @@ export default function WorkflowsPage() {
         </button>
       </div>
 
+      {/* Templates gallery — teaches use cases + gives a one-click running start */}
+      <div className="space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold text-white/80">Start from a template</h2>
+          <p className="text-xs text-white/40 mt-0.5">Pick a goal — we&apos;ll build the pipeline. You just fill in your target and hit Run.</p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {TEMPLATES.map(t => {
+            const Icon = t.icon;
+            return (
+              <button
+                key={t.key}
+                onClick={() => createFromTemplate(t)}
+                disabled={creatingTpl !== null}
+                className="text-left border border-white/10 hover:border-violet-500/40 hover:bg-white/[0.02] rounded-xl p-4 transition-colors disabled:opacity-50 flex flex-col gap-2"
+              >
+                <div className="flex items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-violet-500/15">
+                    {creatingTpl === t.key ? <RefreshCw className="h-3.5 w-3.5 animate-spin text-violet-300" /> : <Icon className="h-3.5 w-3.5 text-violet-300" />}
+                  </div>
+                  <span className="text-sm font-medium text-white">{t.name}</span>
+                </div>
+                <p className="text-xs text-white/50 leading-relaxed">{t.outcome}</p>
+                <div className="mt-auto pt-1 flex items-center gap-1 flex-wrap">
+                  {t.steps.map((s, i) => (
+                    <span key={i} className="text-[10px] text-white/40">
+                      {s.label}{i < t.steps.length - 1 ? " →" : ""}
+                    </span>
+                  ))}
+                </div>
+                <p className="text-[10px] text-violet-300/70">Gives you: {t.gives}</p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <RefreshCw className="h-7 w-7 animate-spin text-violet-400" />
         </div>
       ) : workflows.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center border border-white/10 rounded-2xl gap-4">
+        <div className="flex flex-col items-center justify-center py-16 text-center border border-white/10 rounded-2xl gap-4">
           <GitBranch className="h-12 w-12 text-white/10" />
           <div>
-            <p className="text-white/50 font-medium">No workflows yet</p>
-            <p className="text-sm text-white/30 mt-1">Build your first automated lead gen pipeline</p>
+            <p className="text-white/50 font-medium">No saved workflows yet</p>
+            <p className="text-sm text-white/30 mt-1">Pick a template above, or build one from scratch.</p>
           </div>
           <button
             onClick={() => openBuilder()}
             className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 rounded-lg text-sm transition-colors"
           >
-            <Plus className="h-4 w-4" />Create Workflow
+            <Plus className="h-4 w-4" />Build from scratch
           </button>
         </div>
       ) : (

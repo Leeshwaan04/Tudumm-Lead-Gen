@@ -1,4 +1,5 @@
 "use client";
+import { HelpTip } from "@/components/ui/HelpTip";
 
 import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
@@ -358,7 +359,9 @@ export default function StorePage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Actor Store</h1>
+          <h1 className="text-2xl font-semibold flex items-center gap-2">Actor Store
+            <HelpTip text="Actors are ready-made scrapers. Pick one, give it a target (a URL or search), and it returns structured data you can enrich, sequence, or export." example="Run the Google Maps actor on 'dentists in Austin' to get a lead list." />
+          </h1>
           <p className="text-sm text-white/40 mt-0.5">
             {loading ? "Loading actors…" : `${actors.length.toLocaleString()} automation actors`}
           </p>

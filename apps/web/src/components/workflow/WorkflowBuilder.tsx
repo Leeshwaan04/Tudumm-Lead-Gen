@@ -64,25 +64,25 @@ const nodeIconMap: Record<string, React.ComponentType<{ className?: string }>> =
 };
 
 const nodeTemplates: Array<{ category: NodeCategory; label: string; description: string; slug: string; group: string }> = [
-  // Triggers
-  { category: "trigger", slug: "schedule-trigger",  label: "Schedule Trigger",  description: "Run on a cron schedule",       group: "Triggers" },
-  { category: "trigger", slug: "webhook-trigger",   label: "Webhook Trigger",   description: "Trigger via HTTP webhook",     group: "Triggers" },
-  { category: "trigger", slug: "manual-trigger",    label: "Manual Trigger",    description: "Trigger manually or via API",  group: "Triggers" },
-  // Actions
-  { category: "action", slug: "scrape-linkedin",    label: "Scrape LinkedIn",   description: "Extract LinkedIn profiles",    group: "Actions" },
-  { category: "action", slug: "scrape-google-maps", label: "Google Maps",       description: "Scrape local business data",   group: "Actions" },
-  { category: "action", slug: "find-email",         label: "Find Email",        description: "Find verified email address",  group: "Actions" },
-  { category: "action", slug: "ai-enrich",          label: "AI Enrich",         description: "Enrich with AI analysis",      group: "Actions" },
-  { category: "action", slug: "add-to-sequence",    label: "Add to Sequence",   description: "Enroll lead in sequence",      group: "Actions" },
-  { category: "action", slug: "send-webhook",       label: "Send Webhook",      description: "POST data to external URL",    group: "Actions" },
-  // Conditions
-  { category: "condition", slug: "icp-score-filter", label: "ICP Score Filter", description: "Filter by ICP match score",   group: "Conditions" },
-  { category: "condition", slug: "email-found",      label: "Email Found?",     description: "Branch if email is found",    group: "Conditions" },
-  { category: "condition", slug: "has-phone",        label: "Has Phone?",       description: "Branch if phone available",   group: "Conditions" },
-  // Outputs
-  { category: "output", slug: "save-to-crm",        label: "Save to CRM",       description: "Sync to HubSpot/Salesforce",  group: "Outputs" },
-  { category: "output", slug: "export-csv",         label: "Export CSV",        description: "Export results to CSV file",  group: "Outputs" },
-  { category: "output", slug: "notify-slack",       label: "Notify Slack",      description: "Send Slack notification",     group: "Outputs" },
+  // Triggers — every workflow starts with one
+  { category: "trigger", slug: "schedule-trigger",  label: "Schedule Trigger",  description: "Start automatically on a schedule (e.g. every morning)",  group: "Triggers" },
+  { category: "trigger", slug: "webhook-trigger",   label: "Webhook Trigger",   description: "Start when an external app calls a URL",                   group: "Triggers" },
+  { category: "trigger", slug: "manual-trigger",    label: "Manual Trigger",    description: "Start when you click Run. Good for testing.",              group: "Triggers" },
+  // Actions — collect & process leads
+  { category: "action", slug: "scrape-linkedin",    label: "Scrape LinkedIn",   description: "Pull profiles from a LinkedIn search. Start here for LinkedIn lead-gen (needs a connected session).", group: "Actions" },
+  { category: "action", slug: "scrape-google-maps", label: "Google Maps",       description: "Pull local businesses (name, phone, site). Start here for local prospecting.", group: "Actions" },
+  { category: "action", slug: "find-email",         label: "Find Email",        description: "Look up a verified work email. Use after scraping, before outreach.", group: "Actions" },
+  { category: "action", slug: "ai-enrich",          label: "AI Enrich",         description: "Score how well each lead fits your ICP + write an opener. Use after scraping, before filtering.", group: "Actions" },
+  { category: "action", slug: "add-to-sequence",    label: "Add to Sequence",   description: "Enroll qualified leads into automated email/DM outreach. Usually the last step.", group: "Actions" },
+  { category: "action", slug: "send-webhook",       label: "Send Webhook",      description: "Push the leads to any external app (Zapier, your API).", group: "Actions" },
+  // Conditions — qualify & route
+  { category: "condition", slug: "icp-score-filter", label: "ICP Score Filter", description: "Keep only leads above a fit score. Use after AI Enrich to drop weak leads.", group: "Conditions" },
+  { category: "condition", slug: "email-found",      label: "Email Found?",     description: "Continue only with leads that have an email. Use before email outreach.", group: "Conditions" },
+  { category: "condition", slug: "has-phone",        label: "Has Phone?",       description: "Continue only with leads that have a phone. Use to build a call list.", group: "Conditions" },
+  // Outputs — deliver results
+  { category: "output", slug: "save-to-crm",        label: "Save to CRM",       description: "Push leads to HubSpot/Salesforce (coming soon).", group: "Outputs" },
+  { category: "output", slug: "export-csv",         label: "Export CSV",        description: "Save results as a downloadable dataset.", group: "Outputs" },
+  { category: "output", slug: "notify-slack",       label: "Notify Slack",      description: "Ping a Slack channel when leads are ready (needs a Slack webhook URL).", group: "Outputs" },
 ];
 
 // ─── Custom Node component ───────────────────────────────────────────────────

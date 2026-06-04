@@ -1,4 +1,5 @@
 'use client'
+import { HelpTip } from "@/components/ui/HelpTip";
 
 import { useState, useEffect, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -482,6 +483,7 @@ export default function LeadsPage() {
               <h1 className="text-lg font-semibold flex items-center gap-2">
                 <Users2 className="h-5 w-5 text-violet-400" /> Leads
                 <span className="text-xs bg-white/10 px-1.5 py-0.5 rounded-full">{totalLeads}</span>
+                <HelpTip text="Your contacts. Import a CSV or pull them in via an actor/workflow, then enrich and enroll them into outreach sequences." example="Import prospects, enrich to score fit, email the 80+ scorers." />
               </h1>
             </div>
 
@@ -633,9 +635,12 @@ export default function LeadsPage() {
                 <div className="h-20 w-20 rounded-full bg-violet-500/10 border border-violet-500/20 flex items-center justify-center mb-6">
                   <Users2 className="h-10 w-10 text-violet-400/50" />
                 </div>
-                <h3 className="text-xl font-semibold text-white mb-2">No leads found</h3>
-                <p className="text-sm text-white/50 max-w-md mx-auto mb-8">
-                  Import your first batch of leads via CSV to start tracking, enriching, and engaging with them.
+                <h3 className="text-xl font-semibold text-white mb-2">No leads yet</h3>
+                <p className="text-sm text-white/50 max-w-md mx-auto mb-2">
+                  Leads are your contacts. Import a CSV here, or generate them automatically with an Actor or Workflow — then enrich and enroll them into outreach.
+                </p>
+                <p className="text-xs text-white/35 max-w-md mx-auto mb-8">
+                  CSV columns: fullName, email, company, title, linkedinUrl
                 </p>
                 <button onClick={() => fileRef.current?.click()}
                   className="flex items-center gap-2 px-6 py-3 bg-white/5 border border-white/10 hover:border-violet-500/50 hover:bg-violet-500/10 rounded-xl text-sm font-medium transition-all group">

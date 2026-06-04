@@ -1,4 +1,5 @@
 'use client'
+import { HelpTip } from "@/components/ui/HelpTip";
 
 import { useState, useRef, useCallback } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -196,7 +197,9 @@ export default function EnrichmentPage() {
         <div className="w-full sm:w-80 shrink-0 border-b sm:border-b-0 sm:border-r border-white/10 flex flex-col">
           <div className="p-4 border-b border-white/10 space-y-3">
             <div className="flex items-center justify-between">
-              <h1 className="text-lg font-semibold">Enrichment</h1>
+              <h1 className="text-lg font-semibold flex items-center gap-2">Enrichment
+                <HelpTip text="Enrichment uses AI to score how well each lead fits your ideal customer and drafts a personalized opener. Run it after importing leads, before outreach." example="A 'CTO at a SaaS startup' scores 88 with a tailored first line." />
+              </h1>
               <button onClick={() => fileRef.current?.click()} disabled={importing}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs hover:bg-white/10 transition-colors disabled:opacity-50">
                 {importing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
