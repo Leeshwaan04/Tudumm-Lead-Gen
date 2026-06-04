@@ -42,11 +42,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!user || !user.passwordHash) return null
         const valid = await bcrypt.compare(credentials.password as string, user.passwordHash)
         if (!valid) return null
-        // Block unverified accounts (abuse gate). Existing users are grandfathered;
-        // only new signups that haven't clicked the verification link are blocked.
-        if (user.emailVerified === false) {
-          throw new Error('EMAIL_NOT_VERIFIED')
-        }
+        // Note: we send a verification email but do NOT hard-block login on it —
+        // signup rate-limits + per-workspace quotas already gate abuse, and a hard
+        // wall broke the signup→dashboard flow. Verification stays informational.
         return {
           id: user.id,
           email: user.email,
