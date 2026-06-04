@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useState, useRef } from "react";
+import React, { useCallback, useState, useRef, useEffect } from "react";
 import ReactFlow, {
   MiniMap,
   Controls,
@@ -292,6 +292,35 @@ export function WorkflowBuilder({ workflowId, workflowName = "", readOnly = fals
   const [running, setRunning] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const idRef = useRef(workflowId);
+  const [loading, setLoading] = useState(!!workflowId);
+
+  // Load an existing workflow's name/nodes/edges onto the canvas. Without this,
+  // opening a saved workflow (Edit or a cloned template) showed a blank canvas —
+  // and saving would overwrite it with empty nodes (data loss).
+  useEffect(() => {
+    if (!workflowId) return;
+    let cancelled = false;
+    const parse = (v: unknown): any[] => {
+      if (Array.isArray(v)) return v;
+      if (typeof v === "string") {
+        try { let p = JSON.parse(v); if (typeof p === "string") p = JSON.parse(p); return Array.isArray(p) ? p : []; }
+        catch { return []; }
+      }
+      return [];
+    };
+    fetch(`/api/workflows/${workflowId}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(wf => {
+        if (cancelled || !wf || wf.error) return;
+        idRef.current = wf.id;
+        setName(wf.name ?? "");
+        setNodes(parse(wf.nodes));
+        setEdges(parse(wf.edges));
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [workflowId, setNodes, setEdges]);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -327,6 +356,7 @@ export function WorkflowBuilder({ workflowId, workflowName = "", readOnly = fals
   }
 
   async function save() {
+    if (loading) { showToast("Still loading — try again in a moment."); return; }
     if (!name.trim()) { showToast("Enter a workflow name."); return; }
     setSaving(true);
     try {
