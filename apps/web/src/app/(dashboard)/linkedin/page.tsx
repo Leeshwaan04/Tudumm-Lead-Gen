@@ -51,6 +51,7 @@ export default function LinkedInPage() {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
   const [refreshingId, setRefreshingId] = useState<string | null>(null)
+  const [testingId, setTestingId] = useState<string | null>(null)
   const [toastMsg, setToastMsg] = useState<string | null>(null)
   function showToast(msg: string) { setToastMsg(msg); setTimeout(() => setToastMsg(null), 3500) }
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -99,6 +100,20 @@ export default function LinkedInPage() {
     })
     qc.invalidateQueries({ queryKey: ['linkedin-sessions'] })
     setRefreshingId(null)
+  }
+
+  async function testSession(id: string) {
+    setTestingId(id)
+    try {
+      const res = await fetch(`/api/linkedin/sessions/${id}/test`, { method: 'POST' })
+      const data = await res.json()
+      showToast(data.valid ? `✓ ${data.reason}` : `✗ ${data.reason || data.error || 'Session check failed'}`)
+      qc.invalidateQueries({ queryKey: ['linkedin-sessions'] })
+    } catch (e: any) {
+      showToast(`✗ ${e.message}`)
+    } finally {
+      setTestingId(null)
+    }
   }
 
   async function deleteSession(id: string) {
@@ -266,16 +281,28 @@ export default function LinkedInPage() {
                     <h3 className="font-semibold">{displaySess.alias}</h3>
                     <p className="text-sm text-white/40">{displaySess.email}</p>
                   </div>
-                  <button
-                    onClick={() => refreshSession(displaySess.id)}
-                    disabled={refreshingId === displaySess.id}
-                    className="flex items-center gap-1.5 px-3 py-1.5 border border-white/10 rounded-lg text-sm hover:bg-white/5 transition-colors text-white/60 disabled:opacity-50"
-                  >
-                    {refreshingId === displaySess.id
-                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      : <RefreshCw className="h-3.5 w-3.5" />}
-                    {refreshingId === displaySess.id ? 'Refreshing…' : 'Refresh Cookie'}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => testSession(displaySess.id)}
+                      disabled={testingId === displaySess.id}
+                      className="flex items-center gap-1.5 px-3 py-1.5 border border-white/10 rounded-lg text-sm hover:bg-white/5 transition-colors text-white/60 disabled:opacity-50"
+                    >
+                      {testingId === displaySess.id
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : <CheckCircle className="h-3.5 w-3.5" />}
+                      {testingId === displaySess.id ? 'Testing…' : 'Test Session'}
+                    </button>
+                    <button
+                      onClick={() => refreshSession(displaySess.id)}
+                      disabled={refreshingId === displaySess.id}
+                      className="flex items-center gap-1.5 px-3 py-1.5 border border-white/10 rounded-lg text-sm hover:bg-white/5 transition-colors text-white/60 disabled:opacity-50"
+                    >
+                      {refreshingId === displaySess.id
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : <RefreshCw className="h-3.5 w-3.5" />}
+                      {refreshingId === displaySess.id ? 'Refreshing…' : 'Refresh Cookie'}
+                    </button>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-3 gap-4 mb-4">

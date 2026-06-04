@@ -24,6 +24,7 @@ import {
   Users2,
   X,
   Inbox,
+  Share2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/store/workspace";
@@ -51,6 +52,7 @@ const navItems: NavItem[] = [
   { href: "/schedules", label: "Schedules", icon: Clock },
   { href: "/playbooks", label: "Playbooks", icon: BookOpen, isNew: true },
   { href: "/linkedin", label: "LinkedIn", icon: Linkedin },
+  { href: "/social", label: "Social Accounts", icon: Share2 },
   { href: "/enrichment", label: "Enrichment", icon: Sparkles },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
