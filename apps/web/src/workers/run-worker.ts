@@ -195,7 +195,8 @@ async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, u
       }
     } else if (hunterKey && !first && !last) {
       // No name → domain search returns known emails at the company.
-      const params = new URLSearchParams({ domain, api_key: hunterKey, limit: '20' })
+      // Hunter's free plan caps domain-search at 10 results; 10 is the safe default.
+      const params = new URLSearchParams({ domain, api_key: hunterKey, limit: '10' })
       const r = await fetch(`https://api.hunter.io/v2/domain-search?${params}`, { signal: AbortSignal.timeout(15000) })
       const d = await r.json().catch(() => ({}))
       if (r.ok && Array.isArray(d.data?.emails)) {
