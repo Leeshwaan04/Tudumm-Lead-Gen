@@ -46,4 +46,9 @@ RUN npm install -g tsx@4.19.2
 
 WORKDIR /app/apps/web
 
-CMD ["tsx", "src/workers/start-worker.ts"]
+# Auto-apply additive schema changes on every deploy, then start the worker.
+# `db push` (no --accept-data-loss) applies new tables/columns safely; if a
+# destructive change is needed it's skipped (logged) so the worker still boots
+# and the change can be handled deliberately. This is the single migration
+# point for the whole app — fixes "new model ships with no table → prod 500".
+CMD ["sh", "-c", "npx prisma db push --skip-generate || echo '[migrate] db push skipped — destructive change needs manual handling'; exec tsx src/workers/start-worker.ts"]
