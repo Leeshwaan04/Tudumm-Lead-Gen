@@ -121,7 +121,6 @@ export default function LandingPage() {
           <div className="hidden md:flex items-center gap-8 text-sm text-slate-400">
             <Link href="#features" className="hover:text-white transition-colors">Features</Link>
             <Link href="/store" className="hover:text-white transition-colors">Store</Link>
-            <Link href="#" className="hover:text-white transition-colors">Docs</Link>
           </div>
           <div className="flex items-center gap-3">
             <Link href="/login">
@@ -274,9 +273,9 @@ export default function LandingPage() {
                   Start extracting data
                 </Button>
               </Link>
-              <Link href="#" className="text-sm text-slate-400 hover:text-white transition-colors flex items-center gap-1">
+              <a href="mailto:support@tudumm.in?subject=Tudumm%20demo%20request" className="text-sm text-slate-400 hover:text-white transition-colors flex items-center gap-1">
                 Schedule a demo <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
+              </a>
             </div>
           </div>
         </div>

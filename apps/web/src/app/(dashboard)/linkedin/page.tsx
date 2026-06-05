@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Linkedin, Shield, Cookie, Play, RefreshCw, AlertTriangle, CheckCircle,
-  Clock, Users, MessageSquare, UserPlus, Search, Zap, Loader2, Trash2, X, Plus, CreditCard,
+  Clock, Users, MessageSquare, UserPlus, Search, Zap, Loader2, Trash2, X, Plus,
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -365,12 +365,6 @@ export default function LinkedInPage() {
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-medium">LinkedIn Phantoms</h2>
-          <button
-            onClick={() => showToast('Credit purchase coming soon')}
-            className="flex items-center gap-2 px-3 py-1.5 border border-white/10 rounded-lg text-xs text-white/60 hover:bg-white/5 transition-colors"
-          >
-            <CreditCard className="h-3.5 w-3.5" /> Purchase Credits
-          </button>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {phantomDefs.map(ph => {

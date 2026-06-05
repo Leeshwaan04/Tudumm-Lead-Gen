@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useWorkspaceStore } from "@/store/workspace";
 import {
   Bell,
@@ -16,6 +16,16 @@ import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
 
+type Notif = { id: string; title: string; detail: string; at: string; href: string; ok: boolean };
+
+function timeAgo(iso: string): string {
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
 export function Topbar() {
   const { currentWorkspace, workspaces, currentUser, setCurrentWorkspace, sidebarCollapsed, toggleMobileOpen } =
     useWorkspaceStore();
@@ -23,6 +33,25 @@ export function Topbar() {
   const [workspacesOpen, setWorkspacesOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifications, setNotifications] = useState<Notif[]>([]);
+  const [notifLoading, setNotifLoading] = useState(false);
+
+  // Load notifications on mount + when the dropdown opens (and poll every 60s).
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      setNotifLoading(true);
+      fetch("/api/notifications")
+        .then((r) => (r.ok ? r.json() : { items: [] }))
+        .then((d) => { if (!cancelled) setNotifications(Array.isArray(d.items) ? d.items : []); })
+        .catch(() => {})
+        .finally(() => { if (!cancelled) setNotifLoading(false); });
+    };
+    load();
+    const t = setInterval(load, 60_000);
+    return () => { cancelled = true; clearInterval(t); };
+  }, []);
 
   // Switch the active workspace: update the session's workspaceId (validated
   // server-side), then reload so all data refetches under the new workspace.
@@ -137,10 +166,51 @@ export function Topbar() {
       <div className="flex-1" />
 
       {/* Notifications */}
-      <button className="relative flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-white/5 hover:text-white transition-colors">
-        <Bell className="h-4 w-4" />
-        <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-violet-500 border border-slate-950" />
-      </button>
+      <div className="relative">
+        <button
+          onClick={() => { setNotifOpen(!notifOpen); setWorkspacesOpen(false); setUserMenuOpen(false); }}
+          className="relative flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-white/5 hover:text-white transition-colors"
+          aria-label="Notifications"
+        >
+          <Bell className="h-4 w-4" />
+          {notifications.length > 0 && (
+            <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-violet-500 border border-slate-950" />
+          )}
+        </button>
+
+        {notifOpen && (
+          <div className="absolute right-0 top-full mt-1 w-80 rounded-xl border border-white/10 bg-slate-900 shadow-2xl z-50 overflow-hidden">
+            <div className="px-3 py-2 border-b border-white/10 flex items-center justify-between">
+              <span className="text-sm font-semibold text-white">Notifications</span>
+              {notifLoading && <span className="text-xs text-white/30">Loading…</span>}
+            </div>
+            {notifications.length === 0 ? (
+              <div className="px-3 py-8 text-center text-sm text-white/40">
+                {notifLoading ? "Checking…" : "You're all caught up 🎉"}
+              </div>
+            ) : (
+              <ul className="max-h-96 overflow-y-auto">
+                {notifications.map((n) => (
+                  <li key={n.id}>
+                    <Link
+                      href={n.href}
+                      onClick={() => setNotifOpen(false)}
+                      className="flex gap-3 px-3 py-2.5 hover:bg-white/5 transition-colors border-b border-white/5 last:border-0"
+                    >
+                      <span className={cn("mt-1 h-2 w-2 shrink-0 rounded-full", n.ok ? "bg-emerald-400" : "bg-red-400")} />
+                      <div className="min-w-0">
+                        <div className="text-sm text-white truncate">{n.title}</div>
+                        {n.detail && <div className="text-xs text-white/40 truncate">{n.detail}</div>}
+                        <div className="text-[11px] text-white/25 mt-0.5">{timeAgo(n.at)}</div>
+                      </div>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* User menu */}
       <div className="relative">
