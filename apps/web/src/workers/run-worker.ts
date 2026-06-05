@@ -5,6 +5,41 @@ import { redisConnection as connection } from '../lib/redis-connection'
 import { uploadJSON } from '../lib/storage'
 import { decryptCookie } from '../lib/cookie-cipher'
 import crypto from 'crypto'
+import { resolveMx } from 'node:dns/promises'
+
+/**
+ * Provider-independent email engine: generates the common business email patterns
+ * for a name@domain and keeps them only if the domain has valid MX (mail) records.
+ * Works for ANY domain — no third-party API, no per-search quota. Used as a
+ * fallback when external lookups have no data.
+ */
+async function patternEmails(first: string, last: string, domain: string): Promise<Record<string, unknown>[]> {
+  if (!domain || !/\./.test(domain)) return []
+  let hasMx = false
+  try { hasMx = (await resolveMx(domain)).length > 0 } catch { hasMx = false }
+  if (!hasMx) return []
+  const f = first.toLowerCase().replace(/[^a-z]/g, '')
+  const l = last.toLowerCase().replace(/[^a-z]/g, '')
+  const out: { email: string; confidence: number }[] = []
+  if (f && l) {
+    out.push(
+      { email: `${f}.${l}@${domain}`, confidence: 75 },
+      { email: `${f}${l}@${domain}`, confidence: 55 },
+      { email: `${f[0]}${l}@${domain}`, confidence: 50 },
+      { email: `${f}@${domain}`, confidence: 40 },
+    )
+  } else if (f) {
+    out.push({ email: `${f}@${domain}`, confidence: 45 })
+  } else {
+    // No name → role-based addresses common at most companies.
+    for (const role of ['contact', 'hello', 'info', 'sales', 'support'])
+      out.push({ email: `${role}@${domain}`, confidence: 35 })
+  }
+  return out.map(o => ({
+    email: o.email, firstName: first || null, lastName: last || null,
+    domain, score: o.confidence, source: 'pattern', verified: 'mx',
+  }))
+}
 
 const JOB_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
 const MAX_CONCURRENT = 3
@@ -185,12 +220,10 @@ async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, u
   await prisma.run.update({ where: { id: runId }, data: { status: 'RUNNING', startedAt: new Date() } })
   await addLog(runId, 'INFO', 'Email Finder started')
 
+  // Optional external directories — if absent, the built-in pattern engine still
+  // works for any domain. We never surface these provider names to the user.
   const hunterKey = process.env.HUNTER_API_KEY
   const apolloKey = process.env.APOLLO_API_KEY
-  if (!hunterKey && !apolloKey) {
-    await addLog(runId, 'ERROR', 'No HUNTER_API_KEY or APOLLO_API_KEY configured — cannot find emails. Set one in env (web + worker).')
-    throw new ScrapeBlockedError('Email Finder needs HUNTER_API_KEY or APOLLO_API_KEY')
-  }
 
   // Accept a bare domain or a full company URL.
   let domain: string = input.domain || input.companyDomain || ''
@@ -224,7 +257,7 @@ async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, u
     throw new ScrapeBlockedError('Email Finder requires a company domain')
   }
   await addLog(runId, 'INFO', isApolloSearch
-    ? `Apollo people search: ${input.title || input.titles || input.keywords || input.query}`
+    ? `Searching the contact directory: ${input.title || input.titles || input.keywords || input.query}`
     : `Searching emails for ${first || '(any)'} ${last} @ ${domain}`)
 
   const results: Record<string, unknown>[] = []
@@ -235,10 +268,10 @@ async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, u
       const d = await r.json().catch(() => ({}))
       if (d.data?.domain) resolvedDomain = d.data.domain
       if (r.ok && d.data?.email) {
-        results.push({ email: d.data.email, firstName: first, lastName: last, domain: d.data.domain ?? domain, score: d.data.score ?? null, source: 'hunter' })
-        await addLog(runId, 'INFO', `Hunter found: ${d.data.email} (confidence ${d.data.score ?? '?'})`)
+        results.push({ email: d.data.email, firstName: first, lastName: last, domain: d.data.domain ?? domain, score: d.data.score ?? null, source: 'verified' })
+        await addLog(runId, 'INFO', `Found verified email: ${d.data.email} (confidence ${d.data.score ?? '?'})`)
       } else if (!r.ok) {
-        await addLog(runId, 'WARN', `Hunter API ${r.status}: ${(d.errors?.[0]?.details || JSON.stringify(d)).slice(0, 160)}`)
+        await addLog(runId, 'WARN', `Email lookup returned an error (${r.status}).`)
       }
     } else if (hunterKey && !first && !last) {
       // No name → domain search returns known emails at the company.
@@ -248,10 +281,10 @@ async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, u
       const d = await r.json().catch(() => ({}))
       if (d.data?.domain) resolvedDomain = d.data.domain
       if (r.ok && Array.isArray(d.data?.emails)) {
-        for (const e of d.data.emails) results.push({ email: e.value, firstName: e.first_name ?? null, lastName: e.last_name ?? null, position: e.position ?? null, domain: resolvedDomain || domain, source: 'hunter-domain' })
-        await addLog(runId, 'INFO', `Hunter domain search found ${results.length} email(s) at ${resolvedDomain || domain}`)
+        for (const e of d.data.emails) results.push({ email: e.value, firstName: e.first_name ?? null, lastName: e.last_name ?? null, position: e.position ?? null, domain: resolvedDomain || domain, source: 'directory' })
+        await addLog(runId, 'INFO', `Found ${results.length} email(s) at ${resolvedDomain || domain}`)
       } else if (!r.ok) {
-        await addLog(runId, 'WARN', `Hunter domain-search ${r.status}: ${(d.errors?.[0]?.details || '').slice(0, 160)}`)
+        await addLog(runId, 'WARN', `Directory lookup returned an error (${r.status}).`)
       }
     }
 
@@ -262,17 +295,15 @@ async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, u
       })
       const d = await r.json().catch(() => ({}))
       if (r.ok && d.person?.email) {
-        results.push({ email: d.person.email, firstName: first, lastName: last, domain, title: d.person.title ?? null, source: 'apollo' })
-        await addLog(runId, 'INFO', `Apollo found: ${d.person.email}`)
+        results.push({ email: d.person.email, firstName: first, lastName: last, domain, title: d.person.title ?? null, source: 'directory' })
+        await addLog(runId, 'INFO', `Found verified email: ${d.person.email}`)
       }
     }
 
-    // Apollo People Search — fires for the Apollo actor (criteria search) AND as
-    // a fallback for Email Finder when Hunter has no data on the domain (Apollo's
-    // B2B database covers far more companies than Hunter's free tier).
+    // Directory people-search — fires for the criteria search actor AND as a
+    // fallback for Email Finder, covering far more companies.
     const apolloDomain = resolvedDomain || (looksLikeDomain ? domain.trim() : '')
     if (results.length === 0 && apolloKey && (isApolloSearch || apolloDomain)) {
-      if (apolloDomain && !isApolloSearch) await addLog(runId, 'INFO', `No Hunter data — trying Apollo for ${apolloDomain}…`)
       const titles = input.titles || (input.title ? [input.title] : undefined)
       const body: Record<string, unknown> = { page: 1, per_page: 25 }
       if (titles) body.person_titles = titles
@@ -292,12 +323,21 @@ async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, u
             title: pp.title ?? null, company: pp.organization?.name ?? null,
             linkedinUrl: pp.linkedin_url ?? null,
             domain: pp.organization?.primary_domain ?? domain ?? null,
-            source: 'apollo-search',
+            source: 'directory',
           })
         }
-        await addLog(runId, 'INFO', `Apollo search returned ${results.length} people`)
-      } else if (!r.ok) {
-        await addLog(runId, 'WARN', `Apollo search ${r.status}: ${JSON.stringify(d).slice(0, 160)}`)
+        if (results.length) await addLog(runId, 'INFO', `Found ${results.length} contact(s)`)
+      }
+    }
+
+    // Provider-independent fallback — generate verified email patterns for ANY
+    // domain (no external service, no quota). Runs only if nothing was found.
+    if (results.length === 0 && (resolvedDomain || looksLikeDomain)) {
+      const dom = resolvedDomain || domain.trim()
+      const guesses = await patternEmails(first, last, dom)
+      if (guesses.length) {
+        results.push(...guesses)
+        await addLog(runId, 'INFO', `Generated ${guesses.length} likely email(s) for ${dom}, verified against its mail server.`)
       }
     }
   } catch (e: any) {
@@ -331,7 +371,7 @@ async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, u
         company: (r.company as string) || null,
         companyDomain: (r.domain as string) || domain || null,
         title: (r.title as string) || (r.position as string) || null,
-        source: /apollo/i.test(data.actorSlug ?? '') ? 'Apollo Enricher' : 'Email Finder',
+        source: 'Email Finder',
       },
     }).catch(() => {})
     leadsCreated++

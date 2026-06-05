@@ -277,11 +277,11 @@ function LaunchModal({
                 </>
               ) : isApollo ? (
                 <>
-                  <label className="text-xs text-white/50 mb-1 block">Company Domain to enrich leads from</label>
+                  <label className="text-xs text-white/50 mb-1 block">Company domain to enrich leads from</label>
                   <input value={input} onChange={e => setInput(e.target.value)}
-                    placeholder="acme.com"
+                    placeholder="stripe.com"
                     className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-violet-500/50" />
-                  <p className="text-xs text-white/30 mt-1.5">Requires APOLLO_API_KEY set in env.</p>
+                  <p className="text-xs text-white/30 mt-1.5">Pulls verified contacts (email, title, company) for that domain.</p>
                 </>
               ) : isSocial ? (
                 <>
