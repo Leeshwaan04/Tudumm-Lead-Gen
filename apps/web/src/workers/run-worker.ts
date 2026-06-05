@@ -123,6 +123,38 @@ async function instagramCookies(workspaceId: string): Promise<any[] | undefined>
   }
 }
 
+// On-site email harvesting — crawl a company's own pages for REAL published
+// emails. Free, no third-party API, works for any domain with a website.
+async function harvestSiteEmails(domain: string, runId: string): Promise<Record<string, unknown>[]> {
+  const clean = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '').toLowerCase()
+  if (!clean || !/\./.test(clean)) return []
+  const base = `https://${clean}`
+  const pages = ['', '/contact', '/contact-us', '/about', '/about-us', '/team']
+  const found = new Map<string, Record<string, unknown>>()
+  for (const path of pages) {
+    if (found.size >= 25) break
+    try {
+      const res = await fetch(`${BROWSER_SERVICE_URL}/browser/scrape`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: base + path, waitFor: 'domcontentloaded' }),
+        signal: AbortSignal.timeout(30000),
+      })
+      if (!res.ok) continue
+      const r = await res.json()
+      const emails: string[] = (r.extracted?.emails ?? [])
+      for (const raw of emails) {
+        const em = String(raw).toLowerCase()
+        // keep only addresses on this company's domain, skip junk/asset emails
+        if (em.endsWith('@' + clean) && !/\.(png|jpg|jpeg|gif|webp|svg)$/.test(em) && !found.has(em)) {
+          found.set(em, { email: em, domain: clean, source: 'website', score: 90 })
+        }
+      }
+    } catch { /* page may not exist — fine */ }
+  }
+  if (found.size) await addLog(runId, 'INFO', `Found ${found.size} published email(s) on ${clean}`)
+  return [...found.values()]
+}
+
 // Google Maps phantom via free OpenStreetMap data (Overpass + Nominatim) — no
 // proxy, no blocking. Geocodes the location, queries POIs by category.
 const OSM_TAGS: Record<string, string[]> = {
@@ -407,6 +439,15 @@ async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, u
         }
         if (results.length) await addLog(runId, 'INFO', `Found ${results.length} contact(s)`)
       }
+    }
+
+    // On-site harvest — pull REAL published emails from the company's own site.
+    // Free, no third-party. Merged in (deduped); highest-confidence source.
+    const siteDomain = resolvedDomain || (looksLikeDomain ? domain.trim() : '')
+    if (siteDomain) {
+      const harvested = await harvestSiteEmails(siteDomain, runId)
+      const seen = new Set(results.map(r => String(r.email ?? '').toLowerCase()))
+      for (const h of harvested) if (!seen.has(String(h.email).toLowerCase())) { results.push(h); seen.add(String(h.email).toLowerCase()) }
     }
 
     // Provider-independent fallback — generate verified email patterns for ANY
