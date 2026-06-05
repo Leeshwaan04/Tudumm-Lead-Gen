@@ -74,7 +74,7 @@ export default function DatasetsPage() {
         itemCount: (d.itemCount as number) ?? 0,
         sizeBytes: (d.sizeBytes as number) ?? 0,
         createdAt: d.createdAt as string,
-        actorName: ((d.run as Record<string, unknown>)?.actor as Record<string, unknown>)?.name as string ?? 'Unknown Actor',
+        actorName: ((d.run as Record<string, unknown>)?.actor as Record<string, unknown>)?.name as string ?? 'Workflow',
         status: d.status as string | undefined,
       }))
       setDatasets(list)
@@ -102,7 +102,7 @@ export default function DatasetsPage() {
           itemCount: data.itemCount ?? items.length,
           sizeBytes: data.sizeBytes ?? 0,
           createdAt: data.createdAt,
-          actorName: data.run?.actor?.name ?? 'Unknown Actor',
+          actorName: data.run?.actor?.name ?? 'Workflow',
           status: data.status,
           items,
         })

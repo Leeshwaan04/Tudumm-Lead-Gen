@@ -210,7 +210,7 @@ function ByoProxyCard({ onToast }: { onToast: (m: string, t?: 'success' | 'error
         <div>
           <h3 className="font-semibold text-white">Use your own residential proxy</h3>
           <p className="text-sm text-white/50 mt-0.5">
-            Paste a residential proxy (e.g. IPRoyal, Smartproxy). Your scrapes route through it —
+            Paste a residential proxy URL from any provider. Your scrapes route through it —
             unlocks Google Maps, LinkedIn, Instagram & Twitter. We store it encrypted.
           </p>
         </div>
@@ -221,7 +221,7 @@ function ByoProxyCard({ onToast }: { onToast: (m: string, t?: 'success' | 'error
           type="password"
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          placeholder={hasProxy ? '•••••• (configured — paste to replace)' : 'http://user:pass@geo.iproyal.com:12321'}
+          placeholder={hasProxy ? '•••••• (configured — paste to replace)' : 'http://user:pass@proxy.host.com:12321'}
           className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm placeholder:text-white/30 focus:outline-none focus:border-violet-500/50"
         />
         <button
