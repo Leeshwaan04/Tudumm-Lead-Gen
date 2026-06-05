@@ -24,3 +24,29 @@ export const redisConnection = {
   username: fromUrl?.username ?? process.env.REDIS_USERNAME ?? undefined,
   maxRetriesPerRequest: null,
 }
+
+// Shared Redis client for app-level caching + distributed throttling/locks
+// (separate from the BullMQ connection). Lazy singleton.
+import Redis from 'ioredis'
+let _cache: Redis | null = null
+export function getRedis(): Redis {
+  if (!_cache) _cache = new Redis({ ...redisConnection, lazyConnect: false })
+  return _cache
+}
+
+/**
+ * Distributed rate gate — ensures at most one caller proceeds per `everyMs`
+ * window across ALL worker replicas (e.g. Nominatim's ≤1 req/sec policy).
+ * Returns once the gate is acquired. Falls open if Redis is unavailable.
+ */
+export async function rateGate(key: string, everyMs: number, maxWaitMs = 15000): Promise<void> {
+  const r = getRedis()
+  const deadline = Date.now() + maxWaitMs
+  while (Date.now() < deadline) {
+    try {
+      const ok = await r.set(`gate:${key}`, '1', 'PX', everyMs, 'NX')
+      if (ok) return
+    } catch { return } // Redis down → don't block the job
+    await new Promise(res => setTimeout(res, Math.min(250, everyMs / 4)))
+  }
+}

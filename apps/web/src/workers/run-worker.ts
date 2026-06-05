@@ -1,7 +1,7 @@
 import { Worker } from 'bullmq'
 import { prisma } from '../lib/db'
 import type { RunJobData } from '../lib/queue'
-import { redisConnection as connection } from '../lib/redis-connection'
+import { redisConnection as connection, getRedis, rateGate } from '../lib/redis-connection'
 import { uploadJSON } from '../lib/storage'
 import { decryptCookie } from '../lib/cookie-cipher'
 import crypto from 'crypto'
@@ -200,26 +200,28 @@ const OSM_TAGS: Record<string, string[]> = {
   'real estate': ['office=estate_agent'], 'realtor': ['office=estate_agent'], 'store': ['shop'], 'shop': ['shop'],
 }
 
-// Geocode cache + throttle — Nominatim policy is max 1 req/sec and requires
-// caching; at scale this prevents IP bans and cuts latency on repeat locations.
-const geocodeCache = new Map<string, { s: number; w: number; n: number; e: number; display: string } | null>()
-let lastNominatimAt = 0
-async function geocodeLocation(where: string): Promise<{ s: number; w: number; n: number; e: number; display: string } | null> {
+// Geocode cache + throttle — Nominatim policy is ≤1 req/sec and requires caching.
+// Cache + rate-gate are Redis-backed so they coordinate ACROSS worker replicas
+// (in-process throttling would let N workers hammer Nominatim → IP ban at scale).
+type Geo = { s: number; w: number; n: number; e: number; display: string }
+async function geocodeLocation(where: string): Promise<Geo | null> {
   const key = where.toLowerCase().trim()
-  if (geocodeCache.has(key)) return geocodeCache.get(key)!
-  const wait = 1100 - (Date.now() - lastNominatimAt) // enforce ≥1.1s between calls
-  if (wait > 0) await new Promise(r => setTimeout(r, wait))
-  lastNominatimAt = Date.now()
+  const redis = getRedis()
+  try {
+    const cached = await redis.get(`geo:${key}`)
+    if (cached) return cached === 'null' ? null : JSON.parse(cached)
+  } catch { /* cache miss / redis down */ }
+
+  await rateGate('nominatim', 1100) // global ≤1 req/1.1s across all replicas
   const geo: any[] = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(where)}`,
     { headers: { 'User-Agent': 'Tudumm/1.0 (+https://tudumm.in)' }, signal: AbortSignal.timeout(15000) })
     .then(r => r.json()).catch(() => [])
-  let result: { s: number; w: number; n: number; e: number; display: string } | null = null
+  let result: Geo | null = null
   if (geo[0]?.boundingbox) {
     const b = geo[0].boundingbox.map(Number) // [south, north, west, east]
     result = { s: b[0] ?? 0, w: b[2] ?? 0, n: b[1] ?? 0, e: b[3] ?? 0, display: String(geo[0].display_name || where) }
   }
-  if (geocodeCache.size > 2000) geocodeCache.clear() // bound memory
-  geocodeCache.set(key, result)
+  try { await redis.set(`geo:${key}`, JSON.stringify(result), 'EX', 60 * 60 * 24 * 30) } catch { /* ignore */ }
   return result
 }
 
@@ -255,7 +257,9 @@ async function overpassRun(data: RunJobData): Promise<{ items: Record<string, un
   }
   const oql = `[out:json][timeout:25];(${filters});out center 80;`
 
-  // 3) Query Overpass (free, 10k/day)
+  // 3) Query Overpass (free, ~10k/day shared) — global gate spaces requests so
+  // many workers don't trip its rate limit.
+  await rateGate('overpass', 1500)
   const r = await fetch('https://overpass-api.de/api/interpreter', {
     method: 'POST',
     headers: {
