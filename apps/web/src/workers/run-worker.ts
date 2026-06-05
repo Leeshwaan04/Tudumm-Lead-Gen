@@ -174,7 +174,12 @@ async function overpassRun(data: RunJobData): Promise<{ items: Record<string, un
 
   // 3) Query Overpass (free, 10k/day)
   const r = await fetch('https://overpass-api.de/api/interpreter', {
-    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'application/json',
+      'User-Agent': 'Tudumm/1.0 (+https://tudumm.in)',
+    },
     body: `data=${encodeURIComponent(oql)}`, signal: AbortSignal.timeout(45000),
   })
   if (!r.ok) throw new Error(`Map data service error ${r.status}`)
