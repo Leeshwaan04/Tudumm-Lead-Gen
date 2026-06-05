@@ -198,8 +198,15 @@ async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, u
   if (!domain && typeof maybeUrl === 'string') {
     try { domain = new URL(/^https?:\/\//i.test(maybeUrl) ? maybeUrl : `https://${maybeUrl}`).hostname.replace(/^www\./, '') } catch { /* ignore */ }
   }
-  const first = String(input.firstName || input.first_name || '').trim()
-  const last = String(input.lastName || input.last_name || '').trim()
+  let first = String(input.firstName || input.first_name || '').trim()
+  let last = String(input.lastName || input.last_name || '').trim()
+
+  // Ignore junk/placeholder names (single letters, digits) — Hunter rejects them
+  // with a 400. If a name is invalid, drop it and fall back to domain search so
+  // the user still gets results instead of an error.
+  const validName = (n: string) => /[a-zA-Z]{2,}/.test(n)
+  if (first && !validName(first)) { await addLog(runId, 'WARN', `Ignoring invalid first name "${first}" — searching the whole company instead.`); first = '' }
+  if (last && !validName(last)) last = ''
 
   // Accept a company NAME in the domain field — Hunter resolves it to a domain.
   // A real domain has a dot and no spaces; otherwise treat it as a company name.
