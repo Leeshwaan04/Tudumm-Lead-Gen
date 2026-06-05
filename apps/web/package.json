@@ -38,6 +38,7 @@
     "cron-parser": "^5.5.0",
     "csv-parse": "^6.2.1",
     "date-fns": "^4.1.0",
+    "ioredis": "^5.11.1",
     "lucide-react": "^0.468.0",
     "minio": "^8.0.7",
     "next": "15.5.18",
