@@ -212,6 +212,8 @@ async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, u
   // A real domain has a dot and no spaces; otherwise treat it as a company name.
   const looksLikeDomain = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(domain.trim())
   const hunterTarget: Record<string, string> = looksLikeDomain ? { domain: domain.trim() } : { company: domain.trim() }
+  // The actual domain (filled in once Hunter resolves a company name) — used for the Apollo fallback.
+  let resolvedDomain = looksLikeDomain ? domain.trim() : ''
 
   // Apollo people-search builds a LIST by criteria (title/company/keywords) — it
   // doesn't need a person or even a domain.
@@ -231,6 +233,7 @@ async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, u
       const params = new URLSearchParams({ ...hunterTarget, first_name: first, last_name: last, api_key: hunterKey })
       const r = await fetch(`https://api.hunter.io/v2/email-finder?${params}`, { signal: AbortSignal.timeout(15000) })
       const d = await r.json().catch(() => ({}))
+      if (d.data?.domain) resolvedDomain = d.data.domain
       if (r.ok && d.data?.email) {
         results.push({ email: d.data.email, firstName: first, lastName: last, domain: d.data.domain ?? domain, score: d.data.score ?? null, source: 'hunter' })
         await addLog(runId, 'INFO', `Hunter found: ${d.data.email} (confidence ${d.data.score ?? '?'})`)
@@ -243,10 +246,10 @@ async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, u
       const params = new URLSearchParams({ ...hunterTarget, api_key: hunterKey, limit: '10' })
       const r = await fetch(`https://api.hunter.io/v2/domain-search?${params}`, { signal: AbortSignal.timeout(15000) })
       const d = await r.json().catch(() => ({}))
-      const resolvedDomain = d.data?.domain ?? domain
+      if (d.data?.domain) resolvedDomain = d.data.domain
       if (r.ok && Array.isArray(d.data?.emails)) {
-        for (const e of d.data.emails) results.push({ email: e.value, firstName: e.first_name ?? null, lastName: e.last_name ?? null, position: e.position ?? null, domain: resolvedDomain, source: 'hunter-domain' })
-        await addLog(runId, 'INFO', `Hunter domain search found ${results.length} email(s) at ${resolvedDomain}`)
+        for (const e of d.data.emails) results.push({ email: e.value, firstName: e.first_name ?? null, lastName: e.last_name ?? null, position: e.position ?? null, domain: resolvedDomain || domain, source: 'hunter-domain' })
+        await addLog(runId, 'INFO', `Hunter domain search found ${results.length} email(s) at ${resolvedDomain || domain}`)
       } else if (!r.ok) {
         await addLog(runId, 'WARN', `Hunter domain-search ${r.status}: ${(d.errors?.[0]?.details || '').slice(0, 160)}`)
       }
@@ -264,12 +267,16 @@ async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, u
       }
     }
 
-    // Apollo People Search — build a lead list by criteria (the people-search API).
-    if (results.length === 0 && apolloKey && isApolloSearch) {
+    // Apollo People Search — fires for the Apollo actor (criteria search) AND as
+    // a fallback for Email Finder when Hunter has no data on the domain (Apollo's
+    // B2B database covers far more companies than Hunter's free tier).
+    const apolloDomain = resolvedDomain || (looksLikeDomain ? domain.trim() : '')
+    if (results.length === 0 && apolloKey && (isApolloSearch || apolloDomain)) {
+      if (apolloDomain && !isApolloSearch) await addLog(runId, 'INFO', `No Hunter data — trying Apollo for ${apolloDomain}…`)
       const titles = input.titles || (input.title ? [input.title] : undefined)
       const body: Record<string, unknown> = { page: 1, per_page: 25 }
       if (titles) body.person_titles = titles
-      if (domain) body.q_organization_domains = [domain]
+      if (apolloDomain) body.q_organization_domains = [apolloDomain]
       if (input.keywords || input.query) body.q_keywords = input.keywords || input.query
       const r = await fetch('https://api.apollo.io/v1/mixed_people/search', {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Api-Key': apolloKey },
