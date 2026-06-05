@@ -162,6 +162,7 @@ function LaunchModal({
   const [efDomain, setEfDomain] = useState("");
   const [efFirst, setEfFirst] = useState("");
   const [efLast, setEfLast] = useState("");
+  const [extractPrompt, setExtractPrompt] = useState("");
 
   async function launch() {
     setLaunching(true);
@@ -181,6 +182,7 @@ function LaunchModal({
       const v = input.trim();
       if (/^https?:\/\//i.test(v)) inputObj = { url: v };
       else { try { inputObj = JSON.parse(v || "{}"); } catch { inputObj = { query: v }; } }
+      if (extractPrompt.trim()) inputObj.extractPrompt = extractPrompt.trim();
     }
     try {
       // phantom.id is the real DB actor id — enqueue accepts it directly.
@@ -306,9 +308,14 @@ function LaunchModal({
               ) : (
                 <>
                   <label className="text-xs text-white/50 mb-1 block">Paste a URL to scrape</label>
-                  <textarea value={input} onChange={e => setInput(e.target.value)} rows={3}
+                  <textarea value={input} onChange={e => setInput(e.target.value)} rows={2}
                     placeholder="https://example.com"
-                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm font-mono text-white placeholder:text-white/20 resize-none focus:outline-none focus:border-violet-500/50" />
+                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm font-mono text-white placeholder:text-white/20 resize-none focus:outline-none focus:border-violet-500/50 mb-2" />
+                  <label className="text-xs text-white/50 mb-1 block">✨ What to extract? <span className="text-white/25">(optional — AI)</span></label>
+                  <input value={extractPrompt} onChange={e => setExtractPrompt(e.target.value)}
+                    placeholder="e.g. every product name and price"
+                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-violet-500/50" />
+                  <p className="text-xs text-white/30 mt-1.5">Leave blank for auto-extract (emails, phones, links, structured data).</p>
                 </>
               )}
             </div>

@@ -289,6 +289,31 @@ async function overpassRun(data: RunJobData): Promise<{ items: Record<string, un
   return { items, creditsCost: Math.max(1, Math.ceil(items.length * 0.05)) }
 }
 
+// AI-assisted extraction — turn any page's text into structured rows from a
+// plain-English instruction, via Groq. No per-site parser needed. Self-built.
+async function aiExtract(text: string, prompt: string): Promise<Record<string, unknown>[]> {
+  const apiKey = process.env.GROQ_API_KEY
+  if (!apiKey || !text) return []
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile', max_tokens: 2048, temperature: 0.1,
+        messages: [
+          { role: 'system', content: 'You extract structured data from web page text. Respond with ONLY a JSON array of objects (no prose, no markdown).' },
+          { role: 'user', content: `From the page content below, extract: ${prompt}\nReturn a JSON array of objects with consistent keys.\n\nPAGE CONTENT:\n${text.slice(0, 12000)}` },
+        ],
+      }),
+      signal: AbortSignal.timeout(30000),
+    })
+    const data = await res.json()
+    if (!res.ok) return []
+    const raw: string = data.choices?.[0]?.message?.content ?? '[]'
+    const arr = JSON.parse(raw.match(/\[[\s\S]*\]/)?.[0] ?? '[]')
+    return Array.isArray(arr) ? arr : []
+  } catch { return [] }
+}
+
 async function realScrapeRun(
   data: RunJobData,
   url: string,
@@ -367,6 +392,19 @@ async function realScrapeRun(
     items = [d]
   } else {
     items = [{ url: result.url ?? url, httpStatus: result.status ?? null, scrapedAt: new Date().toISOString() }]
+  }
+
+  // AI-assisted extraction: if the user described what they want, turn the page
+  // into exactly those structured rows. Falls back to the structured data above.
+  const extractPrompt = (data.input as any)?.extractPrompt || (data.input as any)?.extract
+  if (extractPrompt && typeof result.text === 'string' && result.text.length > 40) {
+    await addLog(runId, 'INFO', `AI-extracting: "${String(extractPrompt).slice(0, 80)}"`)
+    const aiItems = await aiExtract(result.text, String(extractPrompt))
+    if (aiItems.length) {
+      await addLog(runId, 'INFO', `AI extracted ${aiItems.length} record(s)`)
+      return { items: aiItems, creditsCost: Math.max(1, Math.ceil(aiItems.length * 0.05)) }
+    }
+    await addLog(runId, 'WARN', 'AI extraction found nothing — returning the page data instead.')
   }
 
   const dp: any = items[0] ?? {}
