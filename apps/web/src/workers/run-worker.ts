@@ -123,6 +123,80 @@ async function instagramCookies(workspaceId: string): Promise<any[] | undefined>
   }
 }
 
+// Google Maps phantom via free OpenStreetMap data (Overpass + Nominatim) — no
+// proxy, no blocking. Geocodes the location, queries POIs by category.
+const OSM_TAGS: Record<string, string[]> = {
+  'coffee': ['amenity=cafe'], 'cafe': ['amenity=cafe'], 'restaurant': ['amenity=restaurant'],
+  'food': ['amenity=restaurant', 'amenity=fast_food'], 'bar': ['amenity=bar', 'amenity=pub'], 'pub': ['amenity=pub'],
+  'hotel': ['tourism=hotel'], 'gym': ['leisure=fitness_centre'], 'fitness': ['leisure=fitness_centre'],
+  'dentist': ['amenity=dentist'], 'doctor': ['amenity=doctors'], 'clinic': ['amenity=clinic'],
+  'hospital': ['amenity=hospital'], 'pharmacy': ['amenity=pharmacy'], 'bakery': ['shop=bakery'],
+  'salon': ['shop=hairdresser', 'shop=beauty'], 'hairdresser': ['shop=hairdresser'], 'spa': ['leisure=spa', 'shop=beauty'],
+  'supermarket': ['shop=supermarket'], 'grocery': ['shop=supermarket', 'shop=convenience'],
+  'bank': ['amenity=bank'], 'school': ['amenity=school'], 'lawyer': ['office=lawyer'],
+  'real estate': ['office=estate_agent'], 'realtor': ['office=estate_agent'], 'store': ['shop'], 'shop': ['shop'],
+}
+
+async function overpassRun(data: RunJobData): Promise<{ items: Record<string, unknown>[]; creditsCost: number }> {
+  const { runId, input } = data
+  await prisma.run.update({ where: { id: runId }, data: { status: 'RUNNING', startedAt: new Date() } })
+  const rawQuery = String((input as any).query || (input as any).what || '').trim()
+  let where = String((input as any).location || (input as any).where || '').trim()
+  let what = rawQuery
+  const m = rawQuery.match(/^(.*?)\s+in\s+(.+)$/i)
+  if (!where && m) { what = (m[1] ?? '').trim(); where = (m[2] ?? '').trim() }
+  if (!what) throw new ScrapeBlockedError('Search like "coffee shops in Austin".')
+  await addLog(runId, 'INFO', `Searching "${what}"${where ? ` in ${where}` : ''} via open map data`)
+
+  // 1) Geocode the location → bounding box
+  if (!where) throw new ScrapeBlockedError('Add a location, e.g. "dentists in Boston".')
+  const geo: any[] = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(where)}`,
+    { headers: { 'User-Agent': 'Tudumm/1.0 (+https://tudumm.in)' }, signal: AbortSignal.timeout(15000) })
+    .then(r => r.json()).catch(() => [])
+  if (!geo[0]?.boundingbox) throw new ScrapeBlockedError(`Couldn't locate "${where}". Try "<type> in <city>".`)
+  const b = geo[0].boundingbox.map(Number) // [south, north, west, east]
+  const [s, w, n, e] = [b[0], b[2], b[1], b[3]]
+  await addLog(runId, 'INFO', `Location: ${String(geo[0].display_name || where).slice(0, 60)}`)
+
+  // 2) Category → OSM tags (fallback: match the name)
+  const key = Object.keys(OSM_TAGS).find(k => what.toLowerCase().includes(k))
+  let filters = ''
+  if (key) {
+    for (const tag of (OSM_TAGS[key] ?? [])) {
+      const tk = tag.split('=')[0] ?? ''
+      const tv = tag.split('=')[1]
+      filters += `nwr${tv ? `["${tk}"="${tv}"]` : `["${tk}"]`}(${s},${w},${n},${e});`
+    }
+  } else {
+    filters = `nwr["name"~"${what.replace(/["\\]/g, '')}",i](${s},${w},${n},${e});`
+  }
+  const oql = `[out:json][timeout:25];(${filters});out center 80;`
+
+  // 3) Query Overpass (free, 10k/day)
+  const r = await fetch('https://overpass-api.de/api/interpreter', {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `data=${encodeURIComponent(oql)}`, signal: AbortSignal.timeout(45000),
+  })
+  if (!r.ok) throw new Error(`Map data service error ${r.status}`)
+  const d = await r.json()
+  const items = (d.elements ?? []).map((el: any) => {
+    const t = el.tags ?? {}
+    const addr = [t['addr:housenumber'], t['addr:street'], t['addr:city'], t['addr:postcode']].filter(Boolean).join(', ')
+    return {
+      name: t.name ?? null, address: addr || null,
+      phone: t.phone || t['contact:phone'] || null,
+      website: t.website || t['contact:website'] || null,
+      email: t.email || t['contact:email'] || null,
+      category: t.amenity || t.shop || t.office || t.leisure || t.tourism || null,
+      openingHours: t.opening_hours || null,
+      lat: el.lat ?? el.center?.lat ?? null, lng: el.lon ?? el.center?.lon ?? null,
+      source: 'maps',
+    }
+  }).filter((x: any) => x.name)
+  await addLog(runId, 'INFO', `Found ${items.length} business(es)`)
+  return { items, creditsCost: Math.max(1, Math.ceil(items.length * 0.05)) }
+}
+
 async function realScrapeRun(
   data: RunJobData,
   url: string,
@@ -472,27 +546,29 @@ const worker = new Worker<RunJobData>(
         return { runId, datasetId: datasetE.id }
       }
 
+      // Google Maps phantom → free OpenStreetMap data (no proxy, no blocking)
+      // when given a search query. Falls through to scraping for a direct URL.
+      const mapsQuery = (job.data.input as any)?.query || (job.data.input as any)?.what
+      const isMaps = /google-maps|maps-extractor/i.test(slug)
+
       // Real scrape only. We NEVER fabricate sample data — an empty/failed scrape
       // is reported honestly so users can trust every dataset.
       const url = extractUrl(job.data.input)
-      if (!url) {
-        clearTimeout(timeoutHandle)
-        await addLog(runId, 'ERROR', 'No target provided. Give this actor a URL (or a search query for Google Maps).')
-        await prisma.run.update({
-          where: { id: runId },
-          data: { status: 'FAILED', finishedAt: new Date(), errorMessage: 'No target URL or query provided' },
-        })
-        activeRunIds.delete(runId)
-        return { runId, datasetId: null }
-      }
       try {
-        ({ items, creditsCost } = await realScrapeRun(job.data, url))
+        if (isMaps && mapsQuery) {
+          ({ items, creditsCost } = await overpassRun(job.data))
+        } else if (url) {
+          ({ items, creditsCost } = await realScrapeRun(job.data, url))
+        } else {
+          throw new ScrapeBlockedError('No target provided. Give a URL — or a search like "coffee shops in Austin" for Google Maps.')
+        }
       } catch (scrapeErr) {
-        // Block or any scrape failure → honest FAILED run, never fake data.
+        // Block / no-target / any failure → honest FAILED run, never fake data.
         clearTimeout(timeoutHandle)
         const msg = scrapeErr instanceof ScrapeBlockedError
           ? String(scrapeErr.message)
-          : `Scrape failed: ${String((scrapeErr as Error).message).slice(0, 200)}`
+          : `Failed: ${String((scrapeErr as Error).message).slice(0, 200)}`
+        await addLog(runId, 'ERROR', msg)
         await prisma.run.update({
           where: { id: runId },
           data: { status: 'FAILED', finishedAt: new Date(), errorMessage: msg },
