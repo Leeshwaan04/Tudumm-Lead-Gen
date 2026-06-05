@@ -11,7 +11,7 @@ const worker = new Worker<WorkflowJobData>(
     const { workflowId, workspaceId, executionId } = job.data
     await runWorkflow(workflowId, workspaceId, executionId)
   },
-  { connection, concurrency: 3 },
+  { connection, concurrency: Number(process.env.WORKFLOW_CONCURRENCY ?? 4) },
 )
 
 worker.on('failed', (job, err) => {

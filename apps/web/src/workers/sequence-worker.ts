@@ -17,7 +17,7 @@ export const sequenceWorker = new Worker<SequenceJobData>(
   },
   {
     connection,
-    concurrency: 5,
+    concurrency: Number(process.env.SEQUENCE_CONCURRENCY ?? 5),
   }
 )
 

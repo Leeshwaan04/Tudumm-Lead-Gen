@@ -42,7 +42,9 @@ async function patternEmails(first: string, last: string, domain: string): Promi
 }
 
 const JOB_TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes
-const MAX_CONCURRENT = 3
+// Concurrency is env-tunable so you can scale a worker vertically (per-instance)
+// and run multiple worker instances horizontally for high scraping volume.
+const MAX_CONCURRENT = Number(process.env.RUN_CONCURRENCY ?? 8)
 const activeRunIds = new Set<string>()
 const BROWSER_SERVICE_URL = process.env.BROWSER_SERVICE_URL || 'http://localhost:8007'
 
@@ -155,6 +157,35 @@ async function harvestSiteEmails(domain: string, runId: string): Promise<Record<
   return [...found.values()]
 }
 
+// GitHub phantom via the free official GitHub API — clean structured data, no
+// scraping, no blocking. 60 req/hr unauthenticated; 5000/hr with GITHUB_TOKEN.
+async function githubApiRun(data: RunJobData, url: string): Promise<{ items: Record<string, unknown>[]; creditsCost: number }> {
+  const { runId } = data
+  await prisma.run.update({ where: { id: runId }, data: { status: 'RUNNING', startedAt: new Date() } })
+  const username = (url.match(/github\.com\/([^/?#]+)/i)?.[1] || '').trim()
+  if (!username || ['search', 'orgs', 'topics'].includes(username.toLowerCase())) {
+    throw new ScrapeBlockedError('Provide a GitHub profile URL like github.com/username.')
+  }
+  await addLog(runId, 'INFO', `Fetching GitHub profile @${username}`)
+  const headers: Record<string, string> = { 'Accept': 'application/vnd.github+json', 'User-Agent': 'Tudumm/1.0' }
+  if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`
+
+  const r = await fetch(`https://api.github.com/users/${encodeURIComponent(username)}`, { headers, signal: AbortSignal.timeout(15000) })
+  if (r.status === 404) throw new ScrapeBlockedError(`GitHub user "${username}" not found.`)
+  if (r.status === 403) throw new ScrapeBlockedError('GitHub rate limit reached — add a GITHUB_TOKEN for 5000 req/hr.')
+  if (!r.ok) throw new Error(`GitHub API error ${r.status}`)
+  const u = await r.json()
+  const item = {
+    type: 'github_profile', username: u.login, name: u.name ?? null, bio: u.bio ?? null,
+    company: u.company ?? null, location: u.location ?? null, email: u.email ?? null,
+    blog: u.blog || null, twitter: u.twitter_username ?? null,
+    followers: u.followers ?? null, following: u.following ?? null, publicRepos: u.public_repos ?? null,
+    profileUrl: u.html_url, avatarUrl: u.avatar_url ?? null, createdAt: u.created_at ?? null, source: 'github',
+  }
+  await addLog(runId, 'INFO', `Found @${u.login}${u.name ? ` (${u.name})` : ''} — ${u.public_repos ?? 0} repos, ${u.followers ?? 0} followers`)
+  return { items: [item], creditsCost: 1 }
+}
+
 // Google Maps phantom via free OpenStreetMap data (Overpass + Nominatim) — no
 // proxy, no blocking. Geocodes the location, queries POIs by category.
 const OSM_TAGS: Record<string, string[]> = {
@@ -169,6 +200,29 @@ const OSM_TAGS: Record<string, string[]> = {
   'real estate': ['office=estate_agent'], 'realtor': ['office=estate_agent'], 'store': ['shop'], 'shop': ['shop'],
 }
 
+// Geocode cache + throttle — Nominatim policy is max 1 req/sec and requires
+// caching; at scale this prevents IP bans and cuts latency on repeat locations.
+const geocodeCache = new Map<string, { s: number; w: number; n: number; e: number; display: string } | null>()
+let lastNominatimAt = 0
+async function geocodeLocation(where: string): Promise<{ s: number; w: number; n: number; e: number; display: string } | null> {
+  const key = where.toLowerCase().trim()
+  if (geocodeCache.has(key)) return geocodeCache.get(key)!
+  const wait = 1100 - (Date.now() - lastNominatimAt) // enforce ≥1.1s between calls
+  if (wait > 0) await new Promise(r => setTimeout(r, wait))
+  lastNominatimAt = Date.now()
+  const geo: any[] = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(where)}`,
+    { headers: { 'User-Agent': 'Tudumm/1.0 (+https://tudumm.in)' }, signal: AbortSignal.timeout(15000) })
+    .then(r => r.json()).catch(() => [])
+  let result: { s: number; w: number; n: number; e: number; display: string } | null = null
+  if (geo[0]?.boundingbox) {
+    const b = geo[0].boundingbox.map(Number) // [south, north, west, east]
+    result = { s: b[0] ?? 0, w: b[2] ?? 0, n: b[1] ?? 0, e: b[3] ?? 0, display: String(geo[0].display_name || where) }
+  }
+  if (geocodeCache.size > 2000) geocodeCache.clear() // bound memory
+  geocodeCache.set(key, result)
+  return result
+}
+
 async function overpassRun(data: RunJobData): Promise<{ items: Record<string, unknown>[]; creditsCost: number }> {
   const { runId, input } = data
   await prisma.run.update({ where: { id: runId }, data: { status: 'RUNNING', startedAt: new Date() } })
@@ -180,15 +234,12 @@ async function overpassRun(data: RunJobData): Promise<{ items: Record<string, un
   if (!what) throw new ScrapeBlockedError('Search like "coffee shops in Austin".')
   await addLog(runId, 'INFO', `Searching "${what}"${where ? ` in ${where}` : ''} via open map data`)
 
-  // 1) Geocode the location → bounding box
+  // 1) Geocode the location → bounding box (cached + throttled)
   if (!where) throw new ScrapeBlockedError('Add a location, e.g. "dentists in Boston".')
-  const geo: any[] = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(where)}`,
-    { headers: { 'User-Agent': 'Tudumm/1.0 (+https://tudumm.in)' }, signal: AbortSignal.timeout(15000) })
-    .then(r => r.json()).catch(() => [])
-  if (!geo[0]?.boundingbox) throw new ScrapeBlockedError(`Couldn't locate "${where}". Try "<type> in <city>".`)
-  const b = geo[0].boundingbox.map(Number) // [south, north, west, east]
-  const [s, w, n, e] = [b[0], b[2], b[1], b[3]]
-  await addLog(runId, 'INFO', `Location: ${String(geo[0].display_name || where).slice(0, 60)}`)
+  const loc = await geocodeLocation(where)
+  if (!loc) throw new ScrapeBlockedError(`Couldn't locate "${where}". Try "<type> in <city>".`)
+  const { s, w, n, e } = loc
+  await addLog(runId, 'INFO', `Location: ${loc.display.slice(0, 60)}`)
 
   // 2) Category → OSM tags (fallback: match the name)
   const key = Object.keys(OSM_TAGS).find(k => what.toLowerCase().includes(k))
@@ -603,6 +654,8 @@ const worker = new Worker<RunJobData>(
       try {
         if (isMaps && mapsQuery) {
           ({ items, creditsCost } = await overpassRun(job.data))
+        } else if (/github/i.test(slug) && url && /github\.com\//i.test(url)) {
+          ({ items, creditsCost } = await githubApiRun(job.data, url))
         } else if (url) {
           ({ items, creditsCost } = await realScrapeRun(job.data, url))
         } else {
