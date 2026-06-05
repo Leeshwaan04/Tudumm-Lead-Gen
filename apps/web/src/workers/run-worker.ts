@@ -201,6 +201,11 @@ async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, u
   const first = String(input.firstName || input.first_name || '').trim()
   const last = String(input.lastName || input.last_name || '').trim()
 
+  // Accept a company NAME in the domain field — Hunter resolves it to a domain.
+  // A real domain has a dot and no spaces; otherwise treat it as a company name.
+  const looksLikeDomain = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(domain.trim())
+  const hunterTarget: Record<string, string> = looksLikeDomain ? { domain: domain.trim() } : { company: domain.trim() }
+
   // Apollo people-search builds a LIST by criteria (title/company/keywords) — it
   // doesn't need a person or even a domain.
   const isApolloSearch = /apollo/i.test(data.actorSlug ?? '') && !first && !last &&
@@ -216,11 +221,11 @@ async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, u
   const results: Record<string, unknown>[] = []
   try {
     if (hunterKey && (first || last)) {
-      const params = new URLSearchParams({ domain, first_name: first, last_name: last, api_key: hunterKey })
+      const params = new URLSearchParams({ ...hunterTarget, first_name: first, last_name: last, api_key: hunterKey })
       const r = await fetch(`https://api.hunter.io/v2/email-finder?${params}`, { signal: AbortSignal.timeout(15000) })
       const d = await r.json().catch(() => ({}))
       if (r.ok && d.data?.email) {
-        results.push({ email: d.data.email, firstName: first, lastName: last, domain, score: d.data.score ?? null, source: 'hunter' })
+        results.push({ email: d.data.email, firstName: first, lastName: last, domain: d.data.domain ?? domain, score: d.data.score ?? null, source: 'hunter' })
         await addLog(runId, 'INFO', `Hunter found: ${d.data.email} (confidence ${d.data.score ?? '?'})`)
       } else if (!r.ok) {
         await addLog(runId, 'WARN', `Hunter API ${r.status}: ${(d.errors?.[0]?.details || JSON.stringify(d)).slice(0, 160)}`)
@@ -228,12 +233,13 @@ async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, u
     } else if (hunterKey && !first && !last) {
       // No name → domain search returns known emails at the company.
       // Hunter's free plan caps domain-search at 10 results; 10 is the safe default.
-      const params = new URLSearchParams({ domain, api_key: hunterKey, limit: '10' })
+      const params = new URLSearchParams({ ...hunterTarget, api_key: hunterKey, limit: '10' })
       const r = await fetch(`https://api.hunter.io/v2/domain-search?${params}`, { signal: AbortSignal.timeout(15000) })
       const d = await r.json().catch(() => ({}))
+      const resolvedDomain = d.data?.domain ?? domain
       if (r.ok && Array.isArray(d.data?.emails)) {
-        for (const e of d.data.emails) results.push({ email: e.value, firstName: e.first_name ?? null, lastName: e.last_name ?? null, position: e.position ?? null, domain, source: 'hunter-domain' })
-        await addLog(runId, 'INFO', `Hunter domain search found ${results.length} email(s) at ${domain}`)
+        for (const e of d.data.emails) results.push({ email: e.value, firstName: e.first_name ?? null, lastName: e.last_name ?? null, position: e.position ?? null, domain: resolvedDomain, source: 'hunter-domain' })
+        await addLog(runId, 'INFO', `Hunter domain search found ${results.length} email(s) at ${resolvedDomain}`)
       } else if (!r.ok) {
         await addLog(runId, 'WARN', `Hunter domain-search ${r.status}: ${(d.errors?.[0]?.details || '').slice(0, 160)}`)
       }
@@ -285,7 +291,7 @@ async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, u
   }
 
   if (results.length === 0) {
-    await addLog(runId, 'INFO', 'No verified email found for the given inputs (this is a real result, not a failure).')
+    await addLog(runId, 'WARN', `No email found for "${domain}"${first || last ? ` / ${first} ${last}`.trimEnd() : ''}. Tips: use the company's website domain (e.g. stripe.com), or search by domain only (no name) to list all emails at that company.`)
   } else {
     await addLog(runId, 'INFO', `Found ${results.length} email(s)`)
   }

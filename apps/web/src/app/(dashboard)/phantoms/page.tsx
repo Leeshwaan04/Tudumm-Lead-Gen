@@ -255,25 +255,25 @@ function LaunchModal({
                 </>
               ) : isEmailFinder ? (
                 <>
-                  <label className="text-xs text-white/50 mb-1 block">Company Domain</label>
+                  <label className="text-xs text-white/50 mb-1 block">Company domain or name</label>
                   <input value={efDomain} onChange={e => setEfDomain(e.target.value)}
-                    placeholder="acme.com"
+                    placeholder="stripe.com  (or just: Stripe)"
                     className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-violet-500/50 mb-2" />
                   <div className="flex gap-2">
                     <div className="flex-1">
-                      <label className="text-xs text-white/50 mb-1 block">First Name</label>
+                      <label className="text-xs text-white/50 mb-1 block">First Name <span className="text-white/25">(optional)</span></label>
                       <input value={efFirst} onChange={e => setEfFirst(e.target.value)}
                         placeholder="John"
                         className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-violet-500/50" />
                     </div>
                     <div className="flex-1">
-                      <label className="text-xs text-white/50 mb-1 block">Last Name</label>
+                      <label className="text-xs text-white/50 mb-1 block">Last Name <span className="text-white/25">(optional)</span></label>
                       <input value={efLast} onChange={e => setEfLast(e.target.value)}
                         placeholder="Smith"
                         className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-violet-500/50" />
                     </div>
                   </div>
-                  <p className="text-xs text-white/30 mt-1.5">Requires HUNTER_API_KEY or APOLLO_API_KEY set in env.</p>
+                  <p className="text-xs text-white/30 mt-1.5">💡 Leave the name blank to list <em>all</em> emails at the company. A domain (stripe.com) works best.</p>
                 </>
               ) : isApollo ? (
                 <>
