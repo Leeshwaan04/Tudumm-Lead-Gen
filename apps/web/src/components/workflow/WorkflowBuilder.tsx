@@ -73,7 +73,7 @@ const nodeTemplates: Array<{ category: NodeCategory; label: string; description:
   { category: "action", slug: "scrape-linkedin",    label: "Scrape LinkedIn",   description: "Pull profiles from a LinkedIn search. Start here for LinkedIn lead-gen (needs a connected session).", group: "Actions" },
   { category: "action", slug: "scrape-google-maps", label: "Google Maps",       description: "Pull local businesses (name, phone, site). Start here for local prospecting.", group: "Actions" },
   { category: "action", slug: "find-email",         label: "Find Email",        description: "Look up a verified work email. Use after scraping, before outreach.", group: "Actions" },
-  { category: "action", slug: "apollo-enrich",      label: "Apollo Enrich",     description: "Enrich leads with Apollo.io data (email, phone, title, company). Needs APOLLO_API_KEY.", group: "Actions" },
+  { category: "action", slug: "apollo-enrich",      label: "Contact Enrich",    description: "Enrich leads with verified email, phone, title & company from our B2B directory.", group: "Actions" },
   { category: "action", slug: "ai-enrich",          label: "AI Enrich",         description: "Score how well each lead fits your ICP + write an opener. Use after scraping, before filtering.", group: "Actions" },
   { category: "action", slug: "add-to-sequence",    label: "Add to Sequence",   description: "Enroll qualified leads into automated email/DM outreach. Usually the last step.", group: "Actions" },
   { category: "action", slug: "send-webhook",       label: "Send Webhook",      description: "Push the leads to any external app (Zapier, your API).", group: "Actions" },
@@ -374,13 +374,40 @@ export function WorkflowBuilder({ workflowId, workflowName = "", readOnly = fals
     setSaving(false);
   }
 
+  // Source/action nodes that produce nothing without these inputs — validate
+  // before running so users don't get a silent 0-item run.
+  const REQUIRED_CONFIG: Record<string, { key: string; label: string }[]> = {
+    "scrape-google-maps": [{ key: "query", label: "Search Query" }],
+    "scrape-linkedin": [{ key: "url", label: "Search URL" }],
+    "send-webhook": [{ key: "url", label: "Target URL" }],
+    "add-to-sequence": [{ key: "sequenceId", label: "Sequence ID" }],
+    "notify-slack": [{ key: "channel", label: "Slack Channel" }],
+  };
+
   async function runWorkflow() {
     if (!idRef.current) { showToast("Save the workflow first."); return; }
+    if (nodes.length === 0) { showToast("Add at least one step before running."); return; }
+
+    // Block the run if any node is missing a required input (the #1 cause of
+    // confusing empty runs). Name the node + field so the fix is obvious.
+    for (const n of nodes) {
+      const reqs = REQUIRED_CONFIG[(n.data as any)?.slug as string];
+      if (!reqs) continue;
+      const cfg = ((n.data as any)?.config ?? {}) as Record<string, string>;
+      const missing = reqs.find(r => !String(cfg[r.key] ?? "").trim());
+      if (missing) {
+        showToast(`“${(n.data as any)?.label}” needs ${missing.label} — click the node to set it.`);
+        setSelectedNode(n);
+        return;
+      }
+    }
+
     setRunning(true);
     try {
-      await fetch(`/api/workflows/${idRef.current}/run`, { method: "POST" });
-      showToast("Workflow run queued!");
-    } catch { showToast("Run failed."); }
+      const res = await fetch(`/api/workflows/${idRef.current}/run`, { method: "POST" });
+      if (!res.ok) throw new Error(String(res.status));
+      showToast("Workflow run queued! Track it in Datasets / Runs.");
+    } catch { showToast("Run failed — please try again."); }
     setRunning(false);
   }
 

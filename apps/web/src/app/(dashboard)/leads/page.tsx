@@ -326,6 +326,9 @@ export default function LeadsPage() {
   const [seqLeadId, setSeqLeadId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<{ id: string; event: React.MouseEvent } | null>(null)
+  const [showAddLead, setShowAddLead] = useState(false)
+  const [addForm, setAddForm] = useState({ name: '', email: '', company: '', title: '' })
+  const [addingLead, setAddingLead] = useState(false)
   const PAGE_SIZE = 20
 
   // Debounce search
@@ -360,6 +363,32 @@ export default function LeadsPage() {
 
   const verifiedCount = leads.filter(l => l.emailStatus === 'VERIFIED').length
   const avgIcp = leads.length > 0 ? Math.round(leads.reduce((s, l) => s + (l.icpScore ?? 0), 0) / leads.length) : 0
+
+  async function addLead() {
+    if (!addForm.name.trim()) return
+    setAddingLead(true)
+    try {
+      const res = await fetch('/api/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: addForm.name.trim(),
+          email: addForm.email.trim() || undefined,
+          company: addForm.company.trim() || undefined,
+          title: addForm.title.trim() || undefined,
+          listId: selectedListId ?? undefined,
+          source: 'Manual',
+        }),
+      })
+      if (!res.ok) throw new Error('create failed')
+      qc.invalidateQueries({ queryKey: ['leads'] })
+      setAddForm({ name: '', email: '', company: '', title: '' })
+      setShowAddLead(false)
+    } catch {
+      alert('Could not add lead. Please try again.')
+    }
+    setAddingLead(false)
+  }
 
   async function createList() {
     if (!newListName.trim()) return
@@ -593,6 +622,12 @@ export default function LeadsPage() {
               <option value="NOT_FOUND">Not Found</option>
             </select>
             <button
+              onClick={() => setShowAddLead(true)}
+              className="flex items-center gap-2 px-4 py-2 border border-white/15 hover:bg-white/5 rounded-lg text-sm transition-colors whitespace-nowrap"
+            >
+              <Plus className="h-3.5 w-3.5" /> Add Lead
+            </button>
+            <button
               onClick={enrichAll}
               disabled={enrichingAll || leads.length === 0}
               className="flex items-center gap-2 px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 rounded-lg text-sm transition-colors whitespace-nowrap"
@@ -746,6 +781,55 @@ export default function LeadsPage() {
         {/* ── Right Detail Panel ────────────────────────────────────────────── */}
         {selectedLead && (
           <LeadPanel lead={selectedLead} onClose={() => setSelectedLead(null)} />
+        )}
+
+        {showAddLead && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowAddLead(false)}>
+            <div className="w-full max-w-md rounded-xl border border-white/10 bg-slate-900 p-5" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-base font-semibold text-white">Add a lead</h3>
+                <button onClick={() => setShowAddLead(false)} className="text-white/40 hover:text-white"><X className="h-4 w-4" /></button>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs text-white/50 mb-1 block">Full name <span className="text-red-400">*</span></label>
+                  <input autoFocus value={addForm.name} onChange={e => setAddForm({ ...addForm, name: e.target.value })}
+                    onKeyDown={e => { if (e.key === 'Enter') addLead() }}
+                    placeholder="Jane Smith"
+                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-violet-500/50" />
+                </div>
+                <div>
+                  <label className="text-xs text-white/50 mb-1 block">Email</label>
+                  <input value={addForm.email} onChange={e => setAddForm({ ...addForm, email: e.target.value })}
+                    onKeyDown={e => { if (e.key === 'Enter') addLead() }}
+                    placeholder="jane@company.com"
+                    className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-violet-500/50" />
+                </div>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <label className="text-xs text-white/50 mb-1 block">Company</label>
+                    <input value={addForm.company} onChange={e => setAddForm({ ...addForm, company: e.target.value })}
+                      placeholder="Acme Inc"
+                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-violet-500/50" />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-xs text-white/50 mb-1 block">Title</label>
+                    <input value={addForm.title} onChange={e => setAddForm({ ...addForm, title: e.target.value })}
+                      placeholder="VP Sales"
+                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-violet-500/50" />
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 mt-5">
+                <button onClick={() => setShowAddLead(false)} className="px-4 py-2 text-sm border border-white/10 rounded-lg hover:bg-white/5 transition-colors">Cancel</button>
+                <button onClick={addLead} disabled={addingLead || !addForm.name.trim()}
+                  className="px-4 py-2 text-sm bg-violet-600 hover:bg-violet-500 disabled:opacity-50 rounded-lg transition-colors flex items-center gap-2">
+                  {addingLead && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  {addingLead ? 'Adding…' : 'Add Lead'}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </>
