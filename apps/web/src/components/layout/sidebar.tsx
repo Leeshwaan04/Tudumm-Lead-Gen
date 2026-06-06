@@ -17,8 +17,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Zap,
-  BarChart3,
-  Shield,
   Linkedin,
   BookOpen,
   Sparkles,
@@ -46,7 +44,7 @@ const navItems: NavItem[] = [
   { href: "/inbox", label: "Inbox", icon: Inbox, badge: "New" },
   { href: "/sequences", label: "Sequences", icon: GitBranch, isNew: true },
   { href: "/workflows", label: "Workflows", icon: GitBranch, isNew: true },
-  { href: "/actors", label: "Actors", icon: Play },
+  { href: "/actors", label: "Runs", icon: Play },
   { href: "/store", label: "Store", icon: Store },
   { href: "/proxy", label: "Proxy", icon: Globe2 },
   { href: "/datasets", label: "Datasets", icon: Database },
@@ -59,8 +57,6 @@ const navItems: NavItem[] = [
 ];
 
 const quickActions: NavItem[] = [
-  { href: "/store?category=lead-generation", label: "Lead Gen", icon: BarChart3 },
-  { href: "/proxy?type=residential", label: "Residential IPs", icon: Shield },
   { href: "/workflows/new", label: "New Workflow", icon: Zap },
 ];
 

@@ -6,6 +6,7 @@ import { uploadJSON } from '../lib/storage'
 import { decryptCookie } from '../lib/cookie-cipher'
 import crypto from 'crypto'
 import { resolveMx } from 'node:dns/promises'
+import { captureError } from '../lib/observability'
 
 /**
  * Provider-independent email engine: generates the common business email patterns
@@ -802,6 +803,9 @@ const worker = new Worker<RunJobData>(
 )
 
 worker.on('completed', job => console.log(`Run ${job.data.runId} completed`))
-worker.on('failed', (job, err) => console.error(`Run ${job?.data.runId} failed:`, err))
+worker.on('failed', (job, err) => {
+  console.error(`Run ${job?.data.runId} failed:`, err)
+  captureError(err, { kind: 'run', runId: job?.data.runId, actorSlug: job?.data.actorSlug, workspaceId: job?.data.workspaceId })
+})
 
 console.log('BullMQ run worker started')

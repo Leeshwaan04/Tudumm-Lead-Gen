@@ -2,6 +2,7 @@ import { Worker, Job } from 'bullmq'
 import { SequenceJobData } from '../lib/queues/sequence-queue'
 import { processSequenceBatch } from '../lib/sequences/executor'
 import { redisConnection as connection } from '../lib/redis-connection'
+import { captureError } from '../lib/observability'
 
 export const sequenceWorker = new Worker<SequenceJobData>(
   'sequences',
@@ -27,4 +28,5 @@ sequenceWorker.on('completed', (job) => {
 
 sequenceWorker.on('failed', (job, err) => {
   console.error(`[SequenceWorker] Job ${job?.id} failed:`, err.message)
+  captureError(err, { kind: 'sequence', jobId: job?.id })
 })
