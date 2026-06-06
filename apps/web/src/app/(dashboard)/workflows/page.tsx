@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { WorkflowBuilder } from "@/components/workflow/WorkflowBuilder";
 import {
   GitBranch, Plus, Play, Trash2, Edit2, Zap,
-  CheckCircle, Clock, PauseCircle, RefreshCw, MapPin, Mail, Linkedin, Send,
+  CheckCircle, Clock, PauseCircle, RefreshCw, MapPin, Mail, Linkedin, Send, TrendingUp,
 } from "lucide-react";
 import { HelpTip } from "@/components/ui/HelpTip";
 
@@ -22,6 +22,17 @@ type Step = { slug: string; label: string; category: string; config?: Record<str
 type Template = { key: string; name: string; outcome: string; gives: string; icon: any; steps: Step[] };
 
 const TEMPLATES: Template[] = [
+  {
+    key: "demat-india", name: "Demat / Trading Leads (India)", icon: TrendingUp,
+    outcome: "Scrape a finance source (advisor/sub-broker directory, broker list, trading forum or influencer page), AI-extract prospects, qualify them, and export. Paste your source URL in the Scrape node.",
+    gives: "qualified demat/trading prospects (name, firm, website, ICP score)",
+    steps: [
+      { slug: "scrape-web", label: "Scrape Finance Source", category: "action", config: { extractPrompt: "For each financial advisor, sub-broker, stock broker or trading firm on the page, extract: name, firm/company, website (domain), city and email if shown" } },
+      { slug: "ai-enrich", label: "AI Enrich (ICP)", category: "action" },
+      { slug: "icp-score-filter", label: "ICP Score Filter", category: "condition", config: { minScore: "70" } },
+      { slug: "export-csv", label: "Export CSV", category: "output", config: { filename: "demat-leads-india" } },
+    ],
+  },
   {
     key: "local-prospecting", name: "Local Business Prospecting", icon: MapPin,
     outcome: "Build a call/email list of local businesses from Google Maps.",

@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db'
 import { uploadJSON } from '@/lib/storage'
+import { aiExtract } from '@/lib/ai-extract'
 
 // ─── Workflow execution engine ──────────────────────────────────────────────
 // Nodes are executed in topological order. Each node receives the items emitted
@@ -79,6 +80,12 @@ async function executeNode(
       })
       if (!res.ok) throw new Error(`scrape failed: ${res.status}`)
       const r = await res.json()
+      // AI-assisted extraction: if the user described what to pull, turn the page
+      // into exactly those structured rows (firms, advisors, handles, emails…).
+      if (cfg.extractPrompt && typeof r.text === 'string' && r.text.length > 40) {
+        const aiItems = await aiExtract(r.text, String(cfg.extractPrompt))
+        if (aiItems.length) return { items: [...input, ...aiItems], summary: `AI-extracted ${aiItems.length} item(s)` }
+      }
       const items: Item[] = Array.isArray(r.extracted) ? r.extracted
         : r.extracted ? [r.extracted]
         : [{ url: r.url ?? url, title: (r.text ?? '').slice(0, 120), text: (r.text ?? '').slice(0, 5000), scrapedAt: new Date().toISOString() }]

@@ -51,6 +51,7 @@ const nodeIconMap: Record<string, React.ComponentType<{ className?: string }>> =
   "manual-trigger":    Hand,
   "scrape-linkedin":   Linkedin,
   "scrape-google-maps": Map,
+  "scrape-web":        Globe,
   "find-email":        Mail,
   "apollo-enrich":     Brain,
   "ai-enrich":         Brain,
@@ -72,6 +73,7 @@ const nodeTemplates: Array<{ category: NodeCategory; label: string; description:
   // Actions — collect & process leads
   { category: "action", slug: "scrape-linkedin",    label: "Scrape LinkedIn",   description: "Pull profiles from a LinkedIn search. Start here for LinkedIn lead-gen (needs a connected session).", group: "Actions" },
   { category: "action", slug: "scrape-google-maps", label: "Google Maps",       description: "Pull local businesses (name, phone, site). Start here for local prospecting.", group: "Actions" },
+  { category: "action", slug: "scrape-web",         label: "Scrape Web Page",   description: "Scrape any public page (directory, forum, listicle, influencer page) and AI-extract structured leads.", group: "Actions" },
   { category: "action", slug: "find-email",         label: "Find Email",        description: "Look up a verified work email. Use after scraping, before outreach.", group: "Actions" },
   { category: "action", slug: "apollo-enrich",      label: "Contact Enrich",    description: "Enrich leads with verified email, phone, title & company from our B2B directory.", group: "Actions" },
   { category: "action", slug: "ai-enrich",          label: "AI Enrich",         description: "Score how well each lead fits your ICP + write an opener. Use after scraping, before filtering.", group: "Actions" },
@@ -132,6 +134,7 @@ function NodeConfigPanel({ node, onUpdate, onDelete }: {
     "webhook-trigger":     [{ key: "path", label: "Webhook Path", placeholder: "/hooks/my-webhook" }],
     "scrape-linkedin":     [{ key: "url", label: "Search URL", placeholder: "https://linkedin.com/..." }, { key: "maxResults", label: "Max Results", placeholder: "100" }],
     "scrape-google-maps":  [{ key: "query", label: "Search Query", placeholder: "coffee shops in NYC" }, { key: "location", label: "Location", placeholder: "New York, NY" }],
+    "scrape-web":          [{ key: "url", label: "Page URL", placeholder: "https://site.com/advisors" }, { key: "extractPrompt", label: "What to extract (AI)", placeholder: "firm names, websites & emails of stock brokers" }],
     "find-email":          [{ key: "domain", label: "Domain (optional)", placeholder: "stripe.com" }],
     "apollo-enrich":       [],
     "ai-enrich":           [{ key: "prompt", label: "Enrichment Prompt", placeholder: "Summarize company recent news..." }],
@@ -379,6 +382,7 @@ export function WorkflowBuilder({ workflowId, workflowName = "", readOnly = fals
   const REQUIRED_CONFIG: Record<string, { key: string; label: string }[]> = {
     "scrape-google-maps": [{ key: "query", label: "Search Query" }],
     "scrape-linkedin": [{ key: "url", label: "Search URL" }],
+    "scrape-web": [{ key: "url", label: "Page URL" }],
     "send-webhook": [{ key: "url", label: "Target URL" }],
     "add-to-sequence": [{ key: "sequenceId", label: "Sequence ID" }],
     "notify-slack": [{ key: "channel", label: "Slack Channel" }],
