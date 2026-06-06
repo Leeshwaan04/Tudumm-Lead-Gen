@@ -36,6 +36,8 @@ export function Topbar() {
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notif[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
+  const [showCreateWs, setShowCreateWs] = useState(false);
+  const [newWsName, setNewWsName] = useState("");
 
   // Load notifications on mount + when the dropdown opens (and poll every 60s).
   useEffect(() => {
@@ -64,14 +66,14 @@ export function Topbar() {
   }
 
   async function createWorkspace() {
-    const name = window.prompt("Name your new workspace");
-    if (!name || !name.trim()) return;
+    const name = newWsName.trim();
+    if (!name) return;
     setSwitching(true);
     try {
       const res = await fetch("/api/workspaces", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim() }),
+        body: JSON.stringify({ name }),
       });
       if (!res.ok) throw new Error("create failed");
       const ws = await res.json();
@@ -151,7 +153,7 @@ export function Topbar() {
             ))}
             <div className="border-t border-white/10 mt-1 pt-1">
               <button
-                onClick={createWorkspace}
+                onClick={() => { setWorkspacesOpen(false); setNewWsName(""); setShowCreateWs(true); }}
                 disabled={switching}
                 className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors disabled:opacity-50"
               >
@@ -264,6 +266,30 @@ export function Topbar() {
           </div>
         )}
       </div>
+
+      {/* Create workspace modal (replaces window.prompt) */}
+      {showCreateWs && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => !switching && setShowCreateWs(false)}>
+          <div className="w-full max-w-sm rounded-xl border border-white/10 bg-slate-900 p-5" onClick={e => e.stopPropagation()}>
+            <h3 className="text-base font-semibold text-white mb-1">Create workspace</h3>
+            <p className="text-xs text-white/40 mb-4">A workspace keeps its own leads, runs, and sequences separate.</p>
+            <input
+              autoFocus
+              value={newWsName}
+              onChange={e => setNewWsName(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") createWorkspace(); if (e.key === "Escape") setShowCreateWs(false); }}
+              placeholder="e.g. Acme Outbound"
+              className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-sm text-white placeholder:text-white/20 focus:outline-none focus:border-violet-500/50"
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => setShowCreateWs(false)} disabled={switching} className="px-4 py-2 text-sm border border-white/10 rounded-lg hover:bg-white/5 transition-colors disabled:opacity-50">Cancel</button>
+              <button onClick={createWorkspace} disabled={switching || !newWsName.trim()} className="px-4 py-2 text-sm bg-violet-600 hover:bg-violet-500 disabled:opacity-50 rounded-lg transition-colors">
+                {switching ? "Creating…" : "Create"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 }

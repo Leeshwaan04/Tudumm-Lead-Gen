@@ -89,7 +89,7 @@ function NewSequenceModal({ onClose, onCreate }: {
   onCreate: (name: string, platform: string) => Promise<Sequence | null>
 }) {
   const [name, setName] = useState('')
-  const [platform, setPlatform] = useState('LINKEDIN')
+  const [platform, setPlatform] = useState('EMAIL')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -132,8 +132,8 @@ function NewSequenceModal({ onClose, onCreate }: {
               onChange={e => setPlatform(e.target.value)}
               className="w-full px-3 py-2 bg-[#09090b] border border-white/10 rounded-lg text-sm text-white focus:outline-none focus:border-violet-500/50"
             >
-              <option value="LINKEDIN">LinkedIn</option>
               <option value="EMAIL">Email</option>
+              <option value="LINKEDIN">LinkedIn (needs a connected session)</option>
               <option value="MIXED">Mixed</option>
             </select>
           </div>
@@ -552,8 +552,8 @@ export default function SequencesPage() {
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 {platformBadge(s.platform)}
-                <span className="flex items-center gap-1 text-xs text-white/30"><Users2 className="h-3 w-3" />{s.leadCount}</span>
-                <span className="flex items-center gap-1 text-xs text-white/30"><MessageSquare className="h-3 w-3" />{s.replyCount}</span>
+                <span title="Leads enrolled" className="flex items-center gap-1 text-xs text-white/30"><Users2 className="h-3 w-3" />{s.leadCount}</span>
+                <span title="Replies received" className="flex items-center gap-1 text-xs text-white/30"><MessageSquare className="h-3 w-3" />{s.replyCount}</span>
               </div>
             </button>
           ))}
