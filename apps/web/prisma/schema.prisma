@@ -50,6 +50,7 @@ model Workspace {
   creditTransactions  CreditTransaction[]
   leads               Lead[]
   leadLists           LeadList[]
+  capturePages        CapturePage[]
   sequences           Sequence[]
   proxyConfigs        ProxyConfig[]
   webhooks            Webhook[]
@@ -558,4 +559,30 @@ model ErrorLog {
   @@index([createdAt])
   @@index([source, createdAt])
   @@map("error_logs")
+}
+
+model CapturePage {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  slug         String   @unique
+  title        String                                      // internal name
+  headline     String   @default("Open your free Demat & Trading account")
+  subheadline  String   @default("Start investing in stocks, IPOs & mutual funds in minutes.")
+  leadMagnet   String   @default("Get a free step-by-step demat account opening guide.")
+  ctaText      String   @default("Get Started Free")
+  collectName  Boolean  @default(true)
+  collectEmail Boolean  @default(true)
+  collectPhone Boolean  @default(true)
+  consentText  String   @default("I agree to be contacted about demat/trading account opening.")
+  listId       String?                                     // B2C category to file leads under
+  published    Boolean  @default(true)
+  views        Int      @default(0)
+  submissions  Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("capture_pages")
 }
