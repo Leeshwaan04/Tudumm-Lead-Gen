@@ -546,3 +546,16 @@ model ActorInputSchema {
 
   @@map("actor_input_schemas")
 }
+
+model ErrorLog {
+  id        String   @id @default(cuid())
+  level     String   @default("error")
+  source    String?  // e.g. "run" | "workflow" | "sequence"
+  message   String
+  context   String   @default("{}") // JSON: runId, workspaceId, actorSlug, stack…
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([source, createdAt])
+  @@map("error_logs")
+}

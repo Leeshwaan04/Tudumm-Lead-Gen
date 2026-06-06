@@ -1,4 +1,5 @@
 import crypto from 'crypto'
+import { prisma } from './db'
 
 /**
  * Dependency-free error reporting compatible with GlitchTip / Sentry.
@@ -32,6 +33,18 @@ export async function captureError(err: unknown, context: Record<string, unknown
   const e = err instanceof Error ? err : new Error(String(err))
   // Always log — visible in Railway logs even with no DSN.
   console.error('[captureError]', e.message, JSON.stringify(context), e.stack?.split('\n').slice(0, 3).join(' | '))
+
+  // Persist to our own Postgres — free, queryable error history (no third party).
+  try {
+    await prisma.errorLog.create({
+      data: {
+        level: 'error',
+        source: typeof context.kind === 'string' ? context.kind : null,
+        message: e.message.slice(0, 1000),
+        context: JSON.stringify({ ...context, stack: (e.stack || '').split('\n').slice(0, 8) }).slice(0, 4000),
+      },
+    })
+  } catch { /* never let logging break the caller */ }
 
   const d = parseDsn()
   if (!d) return
