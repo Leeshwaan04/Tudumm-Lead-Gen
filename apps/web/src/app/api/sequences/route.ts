@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
-import { parseSequenceSteps, SequenceStepError } from '@/lib/sequence-steps'
+import { parseSequenceSteps, SequenceStepError, safeParseSteps } from '@/lib/sequence-steps'
 
 export async function GET() {
   const session = await auth()
@@ -13,7 +13,7 @@ export async function GET() {
     orderBy: { createdAt: 'desc' },
   })
 
-  return NextResponse.json(sequences.map(s => ({ ...s, steps: JSON.parse(s.steps) })))
+  return NextResponse.json(sequences.map(s => ({ ...s, steps: safeParseSteps(s.steps) })))
 }
 
 export async function POST(req: Request) {
@@ -43,5 +43,5 @@ export async function POST(req: Request) {
     },
   })
 
-  return NextResponse.json({ ...sequence, steps: JSON.parse(sequence.steps) }, { status: 201 })
+  return NextResponse.json({ ...sequence, steps: safeParseSteps(sequence.steps) }, { status: 201 })
 }

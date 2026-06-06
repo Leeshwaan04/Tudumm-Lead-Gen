@@ -248,17 +248,30 @@ function AddLeadsModal({ sequenceId, onClose, onAdded }: {
 
 // ─── Steps Editor ─────────────────────────────────────────────────────────────
 
+// Steps may arrive as an array (parsed) or a JSON string (legacy / double-encoded).
+// Heal both so the editor never crashes on `.map`.
+function parseSteps(v: unknown): SequenceStep[] {
+  if (Array.isArray(v)) return v as SequenceStep[]
+  if (typeof v === 'string') {
+    try { let p = JSON.parse(v); if (typeof p === 'string') p = JSON.parse(p); return Array.isArray(p) ? p : [] }
+    catch { return [] }
+  }
+  return []
+}
+
 function StepsEditor({ sequence, onSaved }: { sequence: Sequence; onSaved: () => void }) {
-  const [steps, setSteps] = useState<SequenceStep[]>(sequence.steps ?? [])
+  const [steps, setSteps] = useState<SequenceStep[]>(parseSteps(sequence.steps))
   const [editingIdx, setEditingIdx] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
 
   async function saveSteps(updated: SequenceStep[]) {
     setSaving(true)
+    // Send the ARRAY — the API stringifies it once. Sending a pre-stringified
+    // value caused double-encoding (steps read back as a string → .map crash).
     await fetch(`/api/sequences/${sequence.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ steps: JSON.stringify(updated) }),
+      body: JSON.stringify({ steps: updated }),
     }).catch(() => {})
     setSaving(false)
     onSaved()

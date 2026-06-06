@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
+import { safeParseSteps } from '@/lib/sequence-steps'
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -23,7 +24,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     })
     if (!sequence) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-    return NextResponse.json({ ...sequence, steps: JSON.parse(sequence.steps) })
+    return NextResponse.json({ ...sequence, steps: safeParseSteps(sequence.steps) })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }
@@ -48,7 +49,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     const updated = await prisma.sequence.findUnique({ where: { id } })
     if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    return NextResponse.json({ ...updated, steps: JSON.parse(updated.steps) })
+    return NextResponse.json({ ...updated, steps: safeParseSteps(updated.steps) })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })
   }

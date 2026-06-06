@@ -11,6 +11,23 @@ export interface SequenceStep {
 
 export class SequenceStepError extends Error {}
 
+// Lenient read-side parser: always returns an array (handles single- or
+// double-encoded JSON, null, or garbage) so a malformed row never 500s or
+// crashes the UI.
+export function safeParseSteps(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw
+  if (typeof raw === 'string') {
+    try {
+      let p: unknown = JSON.parse(raw)
+      if (typeof p === 'string') p = JSON.parse(p) // heal double-encoding
+      return Array.isArray(p) ? p : []
+    } catch {
+      return []
+    }
+  }
+  return []
+}
+
 const MAX_STEPS = 20
 const MAX_SUBJECT = 200
 const MAX_MESSAGE = 5000
