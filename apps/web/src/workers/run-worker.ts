@@ -425,10 +425,12 @@ async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, u
   await prisma.run.update({ where: { id: runId }, data: { status: 'RUNNING', startedAt: new Date() } })
   await addLog(runId, 'INFO', 'Email Finder started')
 
-  // Optional external directories — if absent, the built-in pattern engine still
-  // works for any domain. We never surface these provider names to the user.
-  const hunterKey = process.env.HUNTER_API_KEY
-  const apolloKey = process.env.APOLLO_API_KEY
+  // Tudumm's OWN email engine (on-site crawl + pattern + MX) is the default.
+  // External directories are OFF unless explicitly enabled — we don't depend on
+  // them. Set USE_EXTERNAL_EMAIL_PROVIDERS=true only if you ever want a fallback.
+  const useExternal = process.env.USE_EXTERNAL_EMAIL_PROVIDERS === 'true'
+  const hunterKey = useExternal ? process.env.HUNTER_API_KEY : undefined
+  const apolloKey = useExternal ? process.env.APOLLO_API_KEY : undefined
 
   // Accept a bare domain or a full company URL.
   let domain: string = input.domain || input.companyDomain || ''
@@ -566,6 +568,13 @@ async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, u
 
   // Surface found contacts on the Leads page too. Actor runs previously only
   // produced a Dataset, so the Leads list stayed empty — this closes that gap.
+  // Optional: drop results into a chosen Lead list (category), e.g. "B2B — Demat".
+  let targetListId: string | null = null
+  const reqListId = (input as any).listId ? String((input as any).listId) : null
+  if (reqListId) {
+    const list = await prisma.leadList.findFirst({ where: { id: reqListId, workspaceId } })
+    if (list) { targetListId = list.id; await addLog(runId, 'INFO', `Adding leads to list "${list.name}"`) }
+  }
   let leadsCreated = 0
   for (const r of results) {
     const email = r.email ? String(r.email) : null
@@ -586,6 +595,7 @@ async function findEmailRun(data: RunJobData): Promise<{ items: Record<string, u
         companyDomain: (r.domain as string) || domain || null,
         title: (r.title as string) || (r.position as string) || null,
         source: 'Email Finder',
+        listId: targetListId,
       },
     }).catch(() => {})
     leadsCreated++
