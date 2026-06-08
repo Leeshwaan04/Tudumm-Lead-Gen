@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useWorkspaceStore } from "@/store/workspace";
 import {
   Bell,
@@ -11,6 +11,8 @@ import {
   Building2,
   Check,
   Menu,
+  Loader2,
+  Plus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
@@ -33,11 +35,28 @@ export function Topbar() {
   const [workspacesOpen, setWorkspacesOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [switchingId, setSwitchingId] = useState<string | null>(null);
   const [notifOpen, setNotifOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notif[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
   const [showCreateWs, setShowCreateWs] = useState(false);
   const [newWsName, setNewWsName] = useState("");
+  const headerRef = useRef<HTMLElement>(null);
+
+  // Close any open dropdown when clicking outside the header (smoother UX).
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (headerRef.current && !headerRef.current.contains(e.target as Node)) {
+        setWorkspacesOpen(false); setUserMenuOpen(false); setNotifOpen(false);
+      }
+    }
+    function onEsc(e: KeyboardEvent) {
+      if (e.key === "Escape") { setWorkspacesOpen(false); setUserMenuOpen(false); setNotifOpen(false); }
+    }
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onEsc);
+    return () => { document.removeEventListener("mousedown", onDocClick); document.removeEventListener("keydown", onEsc); };
+  }, []);
 
   // Load notifications on mount + when the dropdown opens (and poll every 60s).
   useEffect(() => {
@@ -60,6 +79,7 @@ export function Topbar() {
   async function switchWorkspace(ws: { id: string; name: string }) {
     if (switching || currentWorkspace?.id === ws.id) { setWorkspacesOpen(false); return; }
     setSwitching(true);
+    setSwitchingId(ws.id);
     setCurrentWorkspace(ws as never);
     await update({ workspaceId: ws.id });
     window.location.reload();
@@ -92,6 +112,7 @@ export function Topbar() {
 
   return (
     <header
+      ref={headerRef}
       className={cn(
         "fixed top-0 right-0 z-30 flex h-16 items-center gap-4 border-b border-white/10 bg-slate-950/80 backdrop-blur-xl px-4 transition-all duration-300",
         "left-0 md:left-auto",
@@ -120,44 +141,55 @@ export function Topbar() {
             <Building2 className="h-3 w-3 text-white" />
           </div>
           {workspaceLoading ? (
-            <span className="max-w-[120px] h-3.5 w-24 rounded animate-pulse bg-white/10 inline-block" />
+            <span className="h-3.5 w-24 rounded animate-pulse bg-white/10 inline-block" />
           ) : (
-            <span className="max-w-[120px] truncate">{currentWorkspace?.name ?? "My Workspace"}</span>
+            <span className="max-w-[160px] truncate">{currentWorkspace?.name ?? "My Workspace"}</span>
           )}
           <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
         </button>
 
         {workspacesOpen && (
-          <div className="absolute left-0 top-full mt-1 w-64 rounded-xl border border-white/10 bg-slate-900 shadow-2xl py-1 z-50">
-            <p className="px-3 py-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+          <div className="absolute left-0 top-full mt-2 w-72 rounded-xl border border-white/10 bg-slate-900 shadow-2xl p-1.5 z-50 origin-top-left animate-in fade-in zoom-in-95 duration-150">
+            <p className="px-2.5 py-1.5 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
               Workspaces
             </p>
-            {workspaces.map((ws) => (
-              <button
-                key={ws.id}
-                onClick={() => switchWorkspace(ws)}
-                disabled={switching}
-                className="flex w-full items-center gap-3 px-3 py-2 text-sm text-white hover:bg-white/5 transition-colors disabled:opacity-50"
-              >
-                <div className="flex h-6 w-6 items-center justify-center rounded bg-gradient-to-br from-violet-500 to-indigo-500 text-xs font-bold text-white">
-                  {ws.name[0]}
-                </div>
-                <div className="flex-1 text-left">
-                  <div className="font-medium">{ws.name}</div>
-                  <div className="text-xs text-slate-400">{ws.plan}</div>
-                </div>
-                {currentWorkspace?.id === ws.id && (
-                  <Check className="h-4 w-4 text-violet-400" />
-                )}
-              </button>
-            ))}
-            <div className="border-t border-white/10 mt-1 pt-1">
+            {workspaces.map((ws) => {
+              const active = currentWorkspace?.id === ws.id;
+              return (
+                <button
+                  key={ws.id}
+                  onClick={() => switchWorkspace(ws)}
+                  disabled={switching}
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-sm text-white transition-colors disabled:cursor-not-allowed",
+                    active ? "bg-violet-500/10" : "hover:bg-white/5",
+                    switching && !active ? "opacity-40" : ""
+                  )}
+                >
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-violet-500 to-indigo-500 text-xs font-bold text-white">
+                    {ws.name[0]?.toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1 text-left">
+                    <div className="truncate font-medium leading-tight">{ws.name}</div>
+                    <div className="text-[11px] text-slate-400 leading-tight">{ws.plan}</div>
+                  </div>
+                  {switchingId === ws.id ? (
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin text-violet-400" />
+                  ) : active ? (
+                    <Check className="h-4 w-4 shrink-0 text-violet-400" />
+                  ) : null}
+                </button>
+              );
+            })}
+            <div className="mt-1.5 border-t border-white/10 pt-1.5">
               <button
                 onClick={() => { setWorkspacesOpen(false); setNewWsName(""); setShowCreateWs(true); }}
                 disabled={switching}
-                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors disabled:opacity-50"
+                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors disabled:opacity-50"
               >
-                <Building2 className="h-4 w-4" />
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-dashed border-white/15">
+                  <Plus className="h-3.5 w-3.5" />
+                </div>
                 Create workspace
               </button>
             </div>
