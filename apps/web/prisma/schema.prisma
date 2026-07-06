@@ -598,6 +598,9 @@ model TrendingKeyword {
   approxTraffic Int      @default(0) // parsed from "50,000+" → 50000
   trafficLabel  String   @default("") // raw label as Google reports it
   isFinance     Boolean  @default(false) // matched capital-markets vocabulary
+  keywordEn     String?  // English translation when the query is vernacular
+  newsTitleEn   String?
+  lang          String?  // detected source language code (hi, ta, …)
   newsTitle     String?
   newsUrl       String?
   firstSeenAt   DateTime @default(now())

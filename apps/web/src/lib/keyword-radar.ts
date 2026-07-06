@@ -92,6 +92,30 @@ export async function fetchTrendingRss(geo = 'IN'): Promise<TrendingItem[]> {
   return items
 }
 
+// ── English translation (same free, no-key Google ethos) ───────────────────
+// Trending queries arrive in whatever script India types (hi, ta, mr, …).
+// Translate once at poll time and store alongside the original; the original
+// stays canonical — tracking, probing, and capture pages all use it.
+const NON_ASCII = /[^\x00-\x7F]/
+
+export async function translateToEnglish(
+  text: string
+): Promise<{ text: string; lang: string } | null> {
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURIComponent(text)}`
+    const res = await fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(10_000) })
+    if (!res.ok) return null
+    const data = (await res.json()) as any
+    const translated = Array.isArray(data?.[0])
+      ? data[0].map((seg: any) => seg?.[0] ?? '').join('').trim()
+      : ''
+    if (!translated) return null
+    return { text: translated, lang: typeof data?.[2] === 'string' ? data[2] : 'auto' }
+  } catch {
+    return null
+  }
+}
+
 // ── Source 2: Google Autocomplete ──────────────────────────────────────────
 /** Live suggestions for a seed term — the long-tails people type right now. */
 export async function fetchAutocomplete(seed: string, gl = 'IN'): Promise<string[]> {
@@ -140,13 +164,41 @@ const WATCHLIST_BATCH = Number(process.env.KEYWORD_RADAR_BATCH ?? 30)
 export async function pollTrendingFeed(geo = 'IN'): Promise<number> {
   const items = await fetchTrendingRss(geo)
   const now = new Date()
+  const existing = await prisma.trendingKeyword.findMany({
+    where: { geo, keyword: { in: items.map(i => i.keyword) } },
+  })
+  const byKeyword = new Map(existing.map(e => [e.keyword, e]))
+
   for (const it of items) {
+    const prev = byKeyword.get(it.keyword)
+
+    // Translate vernacular text once (keyword never changes for a row; the
+    // news headline is retranslated only when the headline itself changes).
+    let keywordEn = prev?.keywordEn ?? null
+    let lang = prev?.lang ?? null
+    if (!keywordEn && NON_ASCII.test(it.keyword)) {
+      const t = await translateToEnglish(it.keyword)
+      if (t) { keywordEn = t.text; lang = t.lang }
+    }
+    let newsTitleEn = prev?.newsTitleEn ?? null
+    if (it.newsTitle && NON_ASCII.test(it.newsTitle) && (!newsTitleEn || prev?.newsTitle !== it.newsTitle)) {
+      const t = await translateToEnglish(it.newsTitle)
+      if (t) newsTitleEn = t.text
+    }
+
+    // The finance vocabulary is English — run it over translations too, so
+    // vernacular queries like "இந்திய ரிசர்வ் வங்கி" (RBI) get flagged.
+    const isFinance = it.isFinance || isFinanceKeyword(keywordEn ?? '', newsTitleEn)
+
     await prisma.trendingKeyword.upsert({
       where: { geo_keyword: { geo, keyword: it.keyword } },
       update: {
         approxTraffic: it.approxTraffic,
         trafficLabel: it.trafficLabel,
-        isFinance: it.isFinance,
+        isFinance,
+        keywordEn,
+        newsTitleEn,
+        lang,
         newsTitle: it.newsTitle,
         newsUrl: it.newsUrl,
         lastSeenAt: now,
@@ -156,7 +208,10 @@ export async function pollTrendingFeed(geo = 'IN'): Promise<number> {
         keyword: it.keyword,
         approxTraffic: it.approxTraffic,
         trafficLabel: it.trafficLabel,
-        isFinance: it.isFinance,
+        isFinance,
+        keywordEn,
+        newsTitleEn,
+        lang,
         newsTitle: it.newsTitle,
         newsUrl: it.newsUrl,
       },

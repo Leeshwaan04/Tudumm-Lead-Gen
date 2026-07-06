@@ -10,6 +10,9 @@ import { HelpTip } from '@/components/ui/HelpTip'
 interface TrendingItem {
   id: string
   keyword: string
+  keywordEn?: string | null
+  newsTitleEn?: string | null
+  lang?: string | null
   approxTraffic: number
   trafficLabel: string
   isFinance: boolean
@@ -69,6 +72,7 @@ export default function KeywordRadarPage() {
   const [lastPolledAt, setLastPolledAt] = useState<string | null>(null)
   const [watchlist, setWatchlist] = useState<WatchItem[]>([])
   const [showAll, setShowAll] = useState(false)
+  const [inEnglish, setInEnglish] = useState(true)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [newKeyword, setNewKeyword] = useState('')
@@ -208,10 +212,16 @@ export default function KeywordRadarPage() {
               <h2 className="text-sm font-semibold text-white flex items-center gap-2">
                 <TrendingUp className="h-4 w-4 text-amber-400" /> Trending on Google India — right now
               </h2>
-              <label className="flex items-center gap-2 text-xs text-white/40 cursor-pointer">
-                <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} className="accent-violet-500" />
-                Show all topics
-              </label>
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 text-xs text-white/40 cursor-pointer">
+                  <input type="checkbox" checked={inEnglish} onChange={e => setInEnglish(e.target.checked)} className="accent-violet-500" />
+                  English
+                </label>
+                <label className="flex items-center gap-2 text-xs text-white/40 cursor-pointer">
+                  <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} className="accent-violet-500" />
+                  Show all topics
+                </label>
+              </div>
             </div>
             <div className="rounded-xl border border-white/10 bg-white/5 divide-y divide-white/5 max-h-[560px] overflow-y-auto">
               {trending.length === 0 ? (
@@ -222,7 +232,14 @@ export default function KeywordRadarPage() {
                 <div key={t.id} className="p-3 flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm text-white truncate">{t.keyword}</span>
+                      <span className="text-sm text-white truncate">
+                        {inEnglish && t.keywordEn ? t.keywordEn : t.keyword}
+                      </span>
+                      {inEnglish && t.keywordEn && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-400 shrink-0 truncate max-w-[140px]" title={t.keyword}>
+                          {t.lang ? `${t.lang} · ` : ''}{t.keyword}
+                        </span>
+                      )}
                       {t.approxTraffic > 0 && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 shrink-0">
                           {t.trafficLabel || fmt(t.approxTraffic)} searches
@@ -234,7 +251,8 @@ export default function KeywordRadarPage() {
                     </div>
                     {t.newsTitle && (
                       <a href={t.newsUrl ?? '#'} target="_blank" rel="noreferrer" className="text-xs text-white/40 hover:text-white/70 flex items-center gap-1 mt-0.5 truncate">
-                        <Newspaper className="h-3 w-3 shrink-0" /><span className="truncate">{t.newsTitle}</span>
+                        <Newspaper className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{inEnglish && t.newsTitleEn ? t.newsTitleEn : t.newsTitle}</span>
                       </a>
                     )}
                   </div>
