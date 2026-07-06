@@ -13,7 +13,7 @@ export default function PublicCapturePage({ params }: { params: Promise<{ slug: 
   const { slug } = use(params)
   const [cfg, setCfg] = useState<PageCfg | null>(null)
   const [notFound, setNotFound] = useState(false)
-  const [form, setForm] = useState({ name: '', email: '', phone: '', consent: false })
+  const [form, setForm] = useState({ name: '', email: '', phone: '', consent: false, company_url: '' })
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState(false)
   const [err, setErr] = useState('')
@@ -59,6 +59,10 @@ export default function PublicCapturePage({ params }: { params: Promise<{ slug: 
             {cfg.subheadline && <p className="text-white/60 mb-4">{cfg.subheadline}</p>}
             {cfg.leadMagnet && <div className="rounded-lg bg-violet-500/10 border border-violet-500/20 text-violet-200 text-sm px-3 py-2 mb-5">🎁 {cfg.leadMagnet}</div>}
             <div className="space-y-3">
+              {/* Honeypot — hidden from humans, catches bots. Must stay empty. */}
+              <input type="text" name="company_url" tabIndex={-1} autoComplete="off" aria-hidden="true"
+                value={form.company_url} onChange={e => setForm({ ...form, company_url: e.target.value })}
+                style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, opacity: 0 }} />
               {cfg.collectName && <input className={inp} placeholder="Full name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />}
               {cfg.collectEmail && <input className={inp} type="email" placeholder="Email address" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />}
               {cfg.collectPhone && <input className={inp} type="tel" placeholder="Phone number" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} />}

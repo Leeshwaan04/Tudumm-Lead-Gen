@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/db'
+import { rateLimit, getClientIp } from '@/lib/rate-limit'
 
 // PUBLIC — no auth. Returns the page config for rendering, and accepts form
 // submissions that become consented B2C leads in the owner's workspace.
@@ -20,10 +21,24 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
 export async function POST(req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
   try {
+    // Abuse guard: cap submissions per IP so a public form can't be flooded
+    // with fake leads (lead-poisoning + DB cost). 8/min, 60/hour per IP.
+    const ip = getClientIp(req)
+    if (!rateLimit(`capture:min:${ip}`, 8, 60_000) || !rateLimit(`capture:hr:${ip}`, 60, 60 * 60_000)) {
+      return NextResponse.json({ error: 'Too many submissions. Please try again later.' }, { status: 429 })
+    }
+
     const page = await prisma.capturePage.findUnique({ where: { slug } })
     if (!page || !page.published) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
     const b = await req.json()
+
+    // Honeypot — real users never fill the hidden "company_url" field. Bots do.
+    // Silently accept (200) so the bot thinks it succeeded, but create nothing.
+    if (typeof b.company_url === 'string' && b.company_url.trim() !== '') {
+      return NextResponse.json({ ok: true })
+    }
+
     const email = String(b.email || '').trim().toLowerCase()
     const name = String(b.name || '').trim()
     const phone = String(b.phone || '').trim()

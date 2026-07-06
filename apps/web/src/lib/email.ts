@@ -1,5 +1,7 @@
 // Email utilities: HTML escape, template interpolation, unsubscribe URL.
 
+import { signToken } from '@/lib/sign'
+
 const HTML_ENTITIES: Record<string, string> = {
   '&': '&amp;',
   '<': '&lt;',
@@ -28,12 +30,12 @@ export function interpolate(template: string, lead: any, opts: { html?: boolean 
 
 /**
  * Build the absolute unsubscribe URL for a given lead.
- * The token is the lead ID — opaque to outside but server can look up and mark unsubscribed.
- * For production hardening, sign with HMAC and verify on inbound.
+ * The lead ID is HMAC-signed so the link can't be forged or used to enumerate /
+ * mass-unsubscribe other leads — the server only acts on tokens it issued.
  */
 export function unsubscribeUrl(leadId: string): string {
   const base = process.env.APP_URL ?? 'https://app.tudumm.io'
-  return `${base}/api/unsubscribe?lead=${encodeURIComponent(leadId)}`
+  return `${base}/api/unsubscribe?lead=${encodeURIComponent(signToken(leadId))}`
 }
 
 /** Wrap a plain-text body into a CAN-SPAM-compliant HTML email with unsubscribe footer. */
