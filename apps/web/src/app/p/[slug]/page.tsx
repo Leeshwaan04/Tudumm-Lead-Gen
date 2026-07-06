@@ -17,6 +17,7 @@ export default function PublicCapturePage({ params }: { params: Promise<{ slug: 
   const [submitting, setSubmitting] = useState(false)
   const [done, setDone] = useState(false)
   const [err, setErr] = useState('')
+  const [utm, setUtm] = useState<Record<string, string> | null>(null)
 
   useEffect(() => {
     fetch(`/api/public/capture/${slug}`)
@@ -25,13 +26,25 @@ export default function PublicCapturePage({ params }: { params: Promise<{ slug: 
       .catch(() => setNotFound(true))
   }, [slug])
 
+  // Capture acquisition source once — which keyword/campaign paid for this lead.
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search)
+    const out: Record<string, string> = {}
+    for (const k of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'fbclid']) {
+      const v = sp.get(k)
+      if (v) out[k] = v.slice(0, 200)
+    }
+    if (document.referrer) out.referrer = document.referrer.slice(0, 300)
+    if (Object.keys(out).length) setUtm(out)
+  }, [])
+
   async function submit() {
     setErr('')
     if (cfg?.collectEmail && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email)) { setErr('Please enter a valid email.'); return }
     if (!form.consent) { setErr('Please accept the consent checkbox.'); return }
     setSubmitting(true)
     try {
-      const res = await fetch(`/api/public/capture/${slug}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
+      const res = await fetch(`/api/public/capture/${slug}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, utm }) })
       if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Submission failed') }
       setDone(true)
     } catch (e: any) { setErr(e.message || 'Something went wrong.') }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
+import { pingIndexNow } from '@/lib/indexnow'
 
 function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'page'
@@ -56,6 +57,7 @@ export async function POST(req: Request) {
         listId,
       },
     })
+    pingIndexNow([`/p/${page.slug}`]) // new public page → search engines within minutes
     return NextResponse.json(page, { status: 201 })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })

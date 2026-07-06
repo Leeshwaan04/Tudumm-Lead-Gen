@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@/auth'
 import { prisma } from '@/lib/db'
+import { pingIndexNow } from '@/lib/indexnow'
 
 function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'page'
@@ -51,6 +52,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     })
 
     await prisma.trackedKeyword.update({ where: { id: kw.id }, data: { capturePageId: page.id } })
+    pingIndexNow([`/p/${page.slug}`]) // fresh keyword page → search engines within minutes
     return NextResponse.json(page, { status: 201 })
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 })

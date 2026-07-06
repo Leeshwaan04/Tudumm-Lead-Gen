@@ -50,7 +50,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
     if (!b.consent) return NextResponse.json({ error: 'Consent is required' }, { status: 400 })
 
     const [firstName, ...rest] = name.split(' ')
-    const consentMeta = JSON.stringify({ consent: true, consentText: page.consentText, consentAt: new Date().toISOString(), capturePage: page.slug })
+    // Acquisition attribution: sanitized utm_*/gclid/referrer from the client,
+    // stored with the consent record so every lead is traceable to its keyword.
+    const utm =
+      b.utm && typeof b.utm === 'object' && !Array.isArray(b.utm)
+        ? Object.fromEntries(
+            Object.entries(b.utm)
+              .filter(([k, v]) => typeof v === 'string' && (v as string).length <= 300 && /^[a-z_]{3,20}$/.test(k))
+              .slice(0, 10)
+          )
+        : undefined
+    const consentMeta = JSON.stringify({
+      consent: true,
+      consentText: page.consentText,
+      consentAt: new Date().toISOString(),
+      capturePage: page.slug,
+      ...(utm && Object.keys(utm).length ? { utm } : {}),
+    })
 
     // Upsert by (workspace,email) so re-submits update instead of erroring.
     if (email) {
