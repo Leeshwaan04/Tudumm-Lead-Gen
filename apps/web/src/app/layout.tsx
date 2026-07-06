@@ -41,6 +41,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
       <body className="bg-slate-950 antialiased">
+        {/* Apply the saved theme before first paint to avoid a flash of dark. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(localStorage.getItem("tudumm-theme")==="light")document.documentElement.setAttribute("data-theme","light")}catch(e){}`,
+          }}
+        />
         <Providers>{children}</Providers>
       </body>
     </html>

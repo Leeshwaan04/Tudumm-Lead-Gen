@@ -98,3 +98,145 @@
     box-shadow: 0 0 30px rgba(124, 58, 237, 0.3);
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIGHT THEME — activated via html[data-theme="light"] (see ThemeToggle).
+   The app's pages use a consistent white-on-dark utility vocabulary
+   (text-white, bg-white/5, border-white/10, …). Tailwind utilities live in
+   a cascade layer, so these unlayered overrides win without touching pages.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="light"] {
+  --background: 220 25% 97%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --secondary: 220 15% 92%;
+  --secondary-foreground: 222 47% 11%;
+  --muted: 220 15% 94%;
+  --muted-foreground: 215 15% 40%;
+  --border: 220 13% 88%;
+  --input: 220 13% 88%;
+  --sidebar-background: 0 0% 100%;
+  --sidebar-foreground: 222 25% 32%;
+  --sidebar-accent: 220 15% 94%;
+  --sidebar-accent-foreground: 222 47% 11%;
+  --sidebar-border: 220 13% 90%;
+}
+
+/* ── Ink (text) ── */
+html[data-theme="light"] .text-white { color: #0f172a; }
+html[data-theme="light"] .text-white\/80 { color: rgba(15,23,42,.85); }
+html[data-theme="light"] .text-white\/70 { color: rgba(15,23,42,.75); }
+html[data-theme="light"] .text-white\/60 { color: rgba(15,23,42,.65); }
+html[data-theme="light"] .text-white\/50 { color: rgba(15,23,42,.58); }
+html[data-theme="light"] .text-white\/40 { color: rgba(15,23,42,.52); }
+html[data-theme="light"] .text-white\/35 { color: rgba(15,23,42,.48); }
+html[data-theme="light"] .text-white\/30 { color: rgba(15,23,42,.44); }
+html[data-theme="light"] .text-white\/25 { color: rgba(15,23,42,.40); }
+html[data-theme="light"] .text-white\/20 { color: rgba(15,23,42,.36); }
+html[data-theme="light"] .text-white\/10 { color: rgba(15,23,42,.20); }
+html[data-theme="light"] .hover\:text-white:hover { color: #0f172a; }
+html[data-theme="light"] .hover\:text-white\/70:hover { color: rgba(15,23,42,.75); }
+html[data-theme="light"] .hover\:text-white\/60:hover { color: rgba(15,23,42,.65); }
+html[data-theme="light"] .text-slate-300 { color: #334155; }
+html[data-theme="light"] .text-slate-400 { color: #475569; }
+html[data-theme="light"] .text-slate-500 { color: #64748b; }
+html[data-theme="light"] .text-slate-600 { color: #94a3b8; }
+html[data-theme="light"] .text-slate-700 { color: #cbd5e1; }
+
+/* ── Surfaces ── */
+html[data-theme="light"] .bg-white\/2 { background-color: rgba(15,23,42,.02); }
+html[data-theme="light"] .bg-white\/3 { background-color: rgba(15,23,42,.03); }
+html[data-theme="light"] .bg-white\/5 { background-color: rgba(15,23,42,.04); }
+html[data-theme="light"] .bg-white\/8 { background-color: rgba(15,23,42,.06); }
+html[data-theme="light"] .bg-white\/10 { background-color: rgba(15,23,42,.08); }
+html[data-theme="light"] .bg-white\/\[0\.02\] { background-color: rgba(15,23,42,.02); }
+html[data-theme="light"] .hover\:bg-white\/3:hover { background-color: rgba(15,23,42,.05); }
+html[data-theme="light"] .hover\:bg-white\/5:hover { background-color: rgba(15,23,42,.06); }
+html[data-theme="light"] .hover\:bg-white\/10:hover { background-color: rgba(15,23,42,.10); }
+html[data-theme="light"] .bg-black\/20 { background-color: rgba(15,23,42,.06); }
+html[data-theme="light"] .bg-black\/30 { background-color: rgba(15,23,42,.10); }
+html[data-theme="light"] .bg-black\/40 { background-color: rgba(15,23,42,.18); }
+html[data-theme="light"] .bg-black\/60 { background-color: rgba(15,23,42,.40); }
+html[data-theme="light"] .bg-\[\#09090b\] { background-color: #fbfbfd; }
+html[data-theme="light"] .bg-\[\#121214\] { background-color: #ffffff; }
+html[data-theme="light"] .bg-\[\#0d0d14\] { background-color: #f4f5f9; }
+html[data-theme="light"] .bg-slate-950 { background-color: #f6f7fb; }
+html[data-theme="light"] .bg-slate-950\/80 { background-color: rgba(246,247,251,.85); }
+html[data-theme="light"] .bg-slate-900 { background-color: #ffffff; }
+html[data-theme="light"] .bg-slate-700 { background-color: #e2e8f0; }
+html[data-theme="light"] .bg-slate-600\/20 { background-color: rgba(15,23,42,.08); }
+
+/* ── Borders & dividers ── */
+html[data-theme="light"] .border-white\/5 { border-color: rgba(15,23,42,.08); }
+html[data-theme="light"] .border-white\/10 { border-color: rgba(15,23,42,.12); }
+html[data-theme="light"] .border-white\/15 { border-color: rgba(15,23,42,.16); }
+html[data-theme="light"] .border-white\/20 { border-color: rgba(15,23,42,.22); }
+html[data-theme="light"] .hover\:border-white\/10:hover { border-color: rgba(15,23,42,.16); }
+html[data-theme="light"] .hover\:border-white\/20:hover { border-color: rgba(15,23,42,.28); }
+html[data-theme="light"] .hover\:border-white\/40:hover { border-color: rgba(15,23,42,.40); }
+html[data-theme="light"] .border-slate-900 { border-color: #e2e8f0; }
+html[data-theme="light"] .border-slate-950 { border-color: #f6f7fb; }
+html[data-theme="light"] .divide-white\/5 > :not(:last-child) { border-color: rgba(15,23,42,.08); }
+html[data-theme="light"] .divide-white\/5 > :not([hidden]) ~ :not([hidden]) { border-color: rgba(15,23,42,.08); }
+
+/* ── Placeholders ── */
+html[data-theme="light"] .placeholder-white\/20::placeholder,
+html[data-theme="light"] .placeholder\:text-white\/20::placeholder { color: rgba(15,23,42,.35); }
+html[data-theme="light"] .placeholder-white\/30::placeholder,
+html[data-theme="light"] .placeholder\:text-white\/30::placeholder { color: rgba(15,23,42,.40); }
+
+/* ── Accent text: bump 300/400 shades to 600-weight for light contrast ── */
+html[data-theme="light"] :is(.text-violet-200, .text-violet-300, .text-violet-400) { color: #7c3aed; }
+html[data-theme="light"] :is(.text-red-300, .text-red-400) { color: #dc2626; }
+html[data-theme="light"] :is(.text-green-300, .text-green-400) { color: #16a34a; }
+html[data-theme="light"] .text-yellow-400 { color: #ca8a04; }
+html[data-theme="light"] .text-blue-400 { color: #2563eb; }
+html[data-theme="light"] .text-emerald-400 { color: #059669; }
+html[data-theme="light"] .text-amber-400 { color: #d97706; }
+html[data-theme="light"] .text-pink-400 { color: #db2777; }
+html[data-theme="light"] .text-sky-400 { color: #0284c7; }
+html[data-theme="light"] .text-indigo-400 { color: #4f46e5; }
+html[data-theme="light"] .text-purple-400 { color: #9333ea; }
+html[data-theme="light"] .text-orange-400 { color: #ea580c; }
+html[data-theme="light"] .text-cyan-400 { color: #0891b2; }
+
+/* ── Keep white text on solid/gradient colored surfaces (buttons, chips) ── */
+html[data-theme="light"] :is(
+  .bg-violet-600, .bg-violet-500, .bg-violet-700,
+  .bg-emerald-600, .bg-emerald-500, .bg-green-600,
+  .bg-red-600, .bg-red-500, .bg-rose-600,
+  .bg-blue-600, .bg-sky-600, .bg-indigo-600, .bg-cyan-600,
+  .bg-amber-600, .bg-orange-600, .bg-pink-600, .bg-purple-600,
+  .bg-fuchsia-600, .bg-teal-600, .bg-\[\#0077B5\],
+  [class*="from-violet"], [class*="from-indigo"], [class*="from-emerald"],
+  [class*="from-sky"], [class*="from-rose"], [class*="from-amber"], [class*="from-fuchsia"]
+) { color: #ffffff; }
+html[data-theme="light"] :is(
+  .bg-violet-600, .bg-violet-500, .bg-violet-700,
+  .bg-emerald-600, .bg-emerald-500, .bg-green-600,
+  .bg-red-600, .bg-red-500, .bg-rose-600,
+  .bg-blue-600, .bg-sky-600, .bg-indigo-600, .bg-cyan-600,
+  .bg-amber-600, .bg-orange-600, .bg-pink-600, .bg-purple-600,
+  .bg-fuchsia-600, .bg-teal-600, .bg-\[\#0077B5\],
+  [class*="from-violet"], [class*="from-indigo"], [class*="from-emerald"],
+  [class*="from-sky"], [class*="from-rose"], [class*="from-amber"], [class*="from-fuchsia"]
+) :is(.text-white, .text-white\/80, .text-white\/70) { color: #ffffff; }
+
+/* ── Chrome: scrollbars, glass, react-flow ── */
+html[data-theme="light"] ::-webkit-scrollbar-thumb { background: rgba(15,23,42,.18); }
+html[data-theme="light"] ::-webkit-scrollbar-thumb:hover { background: rgba(15,23,42,.30); }
+html[data-theme="light"] .glass {
+  background: rgba(255,255,255,.75);
+  border: 1px solid rgba(15,23,42,.08);
+}
+html[data-theme="light"] .react-flow__controls-button {
+  background: #ffffff !important;
+  border-color: rgba(15,23,42,.12) !important;
+  color: #475569 !important;
+  fill: #475569 !important;
+}
+html[data-theme="light"] .react-flow__controls-button:hover { background: #eef0f6 !important; }

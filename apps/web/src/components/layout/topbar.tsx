@@ -17,6 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { signOut, useSession } from "next-auth/react";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 type Notif = { id: string; title: string; detail: string; at: string; href: string; ok: boolean };
 
@@ -198,6 +199,8 @@ export function Topbar() {
       </div>
 
       <div className="flex-1" />
+
+      <ThemeToggle />
 
       {/* Notifications */}
       <div className="relative">
