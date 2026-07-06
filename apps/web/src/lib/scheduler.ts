@@ -2,12 +2,23 @@
 //  1. Fires due actor schedules (cronExpr) → enqueues a run, advances nextRunAt
 //  2. Enqueues sequences that have ready leads
 //  3. Resets LinkedIn daily limits once per UTC day
+//  4. Polls Keyword Radar (Google Trends IN + autocomplete) every N minutes
 import { prisma } from './db'
 import { runQueue, type RunJobData } from './queue'
 import { publishSequenceJob } from './queues/sequence-queue'
 import { nextRunAt } from './cron'
+import { pollKeywordRadar } from './keyword-radar'
 
 let lastDailyReset = ''
+let lastKeywordPoll = 0
+const KEYWORD_RADAR_INTERVAL_MS = Number(process.env.KEYWORD_RADAR_INTERVAL_MIN ?? 5) * 60_000
+
+async function pollKeywordRadarIfDue() {
+  if (Date.now() - lastKeywordPoll < KEYWORD_RADAR_INTERVAL_MS) return
+  lastKeywordPoll = Date.now()
+  const { trending, snapshots } = await pollKeywordRadar()
+  console.log(`[Scheduler] Keyword Radar — trending:${trending} snapshots:${snapshots}`)
+}
 
 async function fireDueSchedules() {
   const now = new Date()
@@ -101,6 +112,7 @@ async function tick() {
       enqueueReadySequences(),
     ])
     await resetDailyLimitsIfNeeded()
+    await pollKeywordRadarIfDue().catch(err => console.error('[Scheduler] keyword radar error:', err))
     if (schedules > 0 || sequences > 0) {
       console.log(`[Scheduler] tick — schedules:${schedules} sequences:${sequences}`)
     }

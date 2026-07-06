@@ -25,6 +25,7 @@ import {
   X,
   Inbox,
   Share2,
+  Radar,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/store/workspace";
@@ -43,6 +44,7 @@ const navItems: NavItem[] = [
   { href: "/phantoms", label: "Phantoms", icon: Ghost },
   { href: "/leads", label: "Leads", icon: Users2 },
   { href: "/lead-gen", label: "Lead Gen", icon: Megaphone, isNew: true },
+  { href: "/keywords", label: "Keyword Radar", icon: Radar, isNew: true },
   { href: "/inbox", label: "Inbox", icon: Inbox, badge: "New" },
   { href: "/sequences", label: "Sequences", icon: GitBranch, isNew: true },
   { href: "/workflows", label: "Workflows", icon: GitBranch, isNew: true },

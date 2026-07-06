@@ -59,6 +59,7 @@ model Workspace {
   enrichmentJobs      EnrichmentJob[]
   workflowDefinitions WorkflowDefinition[]
   playbooks           Playbook[]
+  trackedKeywords     TrackedKeyword[]
 
   @@map("workspaces")
 }
@@ -585,4 +586,60 @@ model CapturePage {
 
   @@index([workspaceId])
   @@map("capture_pages")
+}
+
+// ── Keyword Radar ──────────────────────────────────────────────────────────
+// Market-wide trending searches (Google Trends "Trending Now", geo=IN).
+// Global, not per-workspace: one poller feeds every workspace's dashboard.
+model TrendingKeyword {
+  id            String   @id @default(cuid())
+  geo           String   @default("IN")
+  keyword       String
+  approxTraffic Int      @default(0) // parsed from "50,000+" → 50000
+  trafficLabel  String   @default("") // raw label as Google reports it
+  isFinance     Boolean  @default(false) // matched capital-markets vocabulary
+  newsTitle     String?
+  newsUrl       String?
+  firstSeenAt   DateTime @default(now())
+  lastSeenAt    DateTime @default(now())
+
+  @@unique([geo, keyword])
+  @@index([geo, isFinance, lastSeenAt])
+  @@map("trending_keywords")
+}
+
+// A keyword the workspace deliberately watches (demat, IPO names, broker terms…).
+model TrackedKeyword {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  keyword       String
+  category      String   @default("capital-markets")
+  source        String   @default("manual") // manual | trending | seed
+  active        Boolean  @default(true)
+  capturePageId String? // Tudumm capture page converting this keyword
+  landingUrl    String? // mapped page on indiabullssecurities.com
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  snapshots KeywordSnapshot[]
+
+  @@unique([workspaceId, keyword])
+  @@index([workspaceId, active])
+  @@map("tracked_keywords")
+}
+
+// Point-in-time interest reading for a tracked keyword (sparkline data).
+model KeywordSnapshot {
+  id         String   @id @default(cuid())
+  keywordId  String
+  interest   Int      @default(0) // trending approx-traffic, or autocomplete-derived score
+  source     String   @default("autocomplete") // trending | autocomplete
+  meta       String? // JSON: { suggestions: string[], newsUrl?, trafficLabel? }
+  capturedAt DateTime @default(now())
+
+  keyword TrackedKeyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+
+  @@index([keywordId, capturedAt])
+  @@map("keyword_snapshots")
 }
