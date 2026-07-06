@@ -27,6 +27,7 @@ interface WatchItem {
   landingUrl: string | null
   interest: number | null
   interestSource: string | null
+  trafficLabel: string | null
   delta: number
   suggestions: string[]
   sparkline: number[]
@@ -142,8 +143,10 @@ export default function KeywordRadarPage() {
     })
   }
 
+  // One autocomplete rank step moves the score by ~4; require two to call it a spike.
+  const SPIKE_DELTA = 8
   const trackedSet = new Set(watchlist.map(w => w.keyword.toLowerCase()))
-  const spiking = watchlist.filter(w => (w.interest ?? 0) > 0 && w.delta > 0)
+  const spiking = watchlist.filter(w => (w.interest ?? 0) > 0 && w.delta >= SPIKE_DELTA)
   const keywordLeads = watchlist.reduce((s, w) => s + (w.capturePage?.submissions ?? 0), 0)
   const keywordViews = watchlist.reduce((s, w) => s + (w.capturePage?.views ?? 0), 0)
 
@@ -287,7 +290,7 @@ export default function KeywordRadarPage() {
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-sm font-medium text-white truncate">{w.keyword}</span>
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/40 shrink-0">{w.category}</span>
-                      {w.delta > 0 && (
+                      {w.delta >= SPIKE_DELTA && (
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 flex items-center gap-0.5 shrink-0">
                           <Flame className="h-3 w-3" /> spiking
                         </span>
@@ -297,7 +300,7 @@ export default function KeywordRadarPage() {
                       <Sparkline data={w.sparkline} />
                       <div className="text-right w-20">
                         <div className="text-sm font-semibold text-white">
-                          {w.interest === null ? '—' : w.interestSource === 'trending' ? `${fmt(w.interest)}+` : `${w.interest}/100`}
+                          {w.interest === null ? '—' : w.interestSource === 'trending' ? (w.trafficLabel || 'Trending') : `${w.interest}/100`}
                         </div>
                         <div className="text-[10px] text-white/30">
                           {w.interestSource === 'trending' ? 'searches (trending)' : w.interest === null ? 'awaiting poll' : 'demand score'}

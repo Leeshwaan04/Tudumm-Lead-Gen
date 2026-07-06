@@ -39,6 +39,7 @@ export async function GET() {
       landingUrl: k.landingUrl,
       interest: latest?.interest ?? null,
       interestSource: latest?.source ?? null,
+      trafficLabel: meta?.trafficLabel ?? null,
       delta: latest && prev ? latest.interest - prev.interest : 0,
       suggestions: meta?.suggestions ?? [],
       sparkline: snaps.map(s => s.interest),

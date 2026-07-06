@@ -102,6 +102,36 @@ export async function fetchAutocomplete(seed: string, gl = 'IN'): Promise<string
   return Array.isArray(data?.[1]) ? data[1] : []
 }
 
+/**
+ * Rank-weighted prefix probe — the real demand signal behind the 0–100 score.
+ * Google only autocompletes what people actually type, and it completes
+ * high-volume queries from fewer characters. So: find the shortest prefix of
+ * the keyword at which it appears in the top-10 suggestions, and where.
+ *   ~80 = completes from a third of its letters at rank 1 (mass demand)
+ *   ~35 = only completes when fully typed
+ *   <10 = Google never suggests it (breadth of its own suggestions, 0–9)
+ */
+export async function probeDemandScore(
+  keyword: string
+): Promise<{ score: number; suggestions: string[]; probe: string }> {
+  const kw = keyword.toLowerCase().trim()
+  const suggestions = await fetchAutocomplete(kw) // full-keyword call doubles as the f=1.0 probe
+  for (const f of [0.3, 0.5, 0.7, 1.0]) {
+    const prefix = kw.slice(0, Math.max(3, Math.ceil(kw.length * f)))
+    const sugg = f === 1.0 ? suggestions : await fetchAutocomplete(prefix)
+    const rank = sugg.findIndex(s => {
+      const t = s.toLowerCase()
+      return t === kw || t.startsWith(kw)
+    })
+    if (rank >= 0) {
+      const score = Math.max(1, Math.min(100, Math.round((1 - f) * 65 + (10 - rank) * 3.5)))
+      return { score, suggestions, probe: `${Math.round(f * 100)}%@${rank + 1}` }
+    }
+    if (f !== 1.0) await new Promise(r => setTimeout(r, 250))
+  }
+  return { score: Math.min(suggestions.length, 9), suggestions, probe: 'no-complete' }
+}
+
 // ── Poller (called from the worker scheduler + manual refresh API) ─────────
 const SNAPSHOT_RETENTION_DAYS = 30
 const WATCHLIST_BATCH = Number(process.env.KEYWORD_RADAR_BATCH ?? 30)
@@ -137,9 +167,9 @@ export async function pollTrendingFeed(geo = 'IN'): Promise<number> {
 
 /**
  * Snapshot every active tracked keyword across all workspaces.
- * Interest score: national trending approx-traffic when the keyword (or a
- * trending query containing it) is trending; otherwise an autocomplete
- * breadth score (10 pts per live suggestion — 0 means nobody types it).
+ * `interest` is ALWAYS on a 0–100 demand scale so sparklines and deltas are
+ * comparable: 100 when the keyword is nationally trending (raw traffic kept
+ * in meta.trafficLabel), otherwise the rank-weighted prefix-probe score.
  */
 export async function snapshotWatchlists(): Promise<number> {
   const tracked = await prisma.trackedKeyword.findMany({
@@ -163,14 +193,18 @@ export async function snapshotWatchlists(): Promise<number> {
       )
       let interest: number
       let source: string
-      let suggestions: string[] = []
+      let suggestions: string[]
+      let probe: string | undefined
       if (hit && hit.approxTraffic > 0) {
-        interest = hit.approxTraffic
+        interest = 100
         source = 'trending'
+        suggestions = await fetchAutocomplete(kw.keyword).catch(() => [])
       } else {
-        suggestions = await fetchAutocomplete(kw.keyword)
-        interest = suggestions.length * 10
+        const probed = await probeDemandScore(kw.keyword)
+        interest = probed.score
         source = 'autocomplete'
+        suggestions = probed.suggestions
+        probe = probed.probe
       }
       await prisma.keywordSnapshot.create({
         data: {
@@ -179,7 +213,9 @@ export async function snapshotWatchlists(): Promise<number> {
           source,
           meta: JSON.stringify({
             suggestions: suggestions.slice(0, 10),
+            probe,
             trafficLabel: hit?.trafficLabel,
+            approxTraffic: hit?.approxTraffic,
             newsUrl: hit?.newsUrl,
           }),
         },
