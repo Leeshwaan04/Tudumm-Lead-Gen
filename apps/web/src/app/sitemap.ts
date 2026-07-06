@@ -3,6 +3,10 @@ import { prisma } from '@/lib/db'
 
 const BASE = process.env.APP_URL ?? 'https://www.tudumm.in'
 
+// Regenerate per request — a build-time snapshot would freeze the page list
+// (and the build environment may not reach the DB at all).
+export const dynamic = 'force-dynamic'
+
 // Google discovers capture pages through this sitemap (it does not consume
 // IndexNow). Fresh keyword pages appear here the moment they are created.
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
